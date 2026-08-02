@@ -2,6 +2,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.UUID;
+import java.util.List;
 
 /**
  * Punto di ingresso del nodo sensore. Avviato con indirizzo e porta
@@ -14,17 +15,6 @@ import java.util.UUID;
  *   - connessione persistente all'aggregatore (AggregatorLink);
  *   - console interattiva sul thread principale.
  * Cosi' la sessione interattiva non interrompe il funzionamento in rete.
- *
- * OWNER: Membro B (Client - base). Il comando "download" e' delegato al
- * Downloader (Membro C).
- */
-
-/**
- * Classe principale che rappresenta un singolo "nodo" (un dispositivo/client) della rete.
- * Si occupa di coordinare tre attività in contemporanea:
- * 1. Rispondere alle richieste di altri nodi (server P2P).
- * 2. Mantenere i contatti con il server centrale (aggregatore).
- * 3. Leggere ed eseguire i comandi scritti dall'utente sul terminale.
  */
 public class Client {
 
@@ -185,7 +175,7 @@ public class Client {
 
                     // COMANDO 5: Chiude l'applicazione
                     } else if (trimmed.equals("quit")) {
-                        shutdownNode(peerServer, aggregator); // Spegne le connessioni
+                        // La chiusura pulita (shutdownNode) avviene nel blocco finally
                         return; // Esce dal metodo console (e termina il programma)
 
                     } else {

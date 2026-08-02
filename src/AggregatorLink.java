@@ -16,15 +16,6 @@ import java.util.List;
  * I metodi sono "synchronized": la connessione e' condivisa (console e
  * Downloader), quindi una richiesta/risposta per volta viaggia sul socket,
  * evitando interleaving corrotti.
- *
- * OWNER: Membro B (Client - base). Il metodo di sessione download e' pensato per
- * essere usato dal Downloader (Membro C): interfaccia condivisa concordata.
- */
-
-/**
- * Gestisce l'unica connessione TCP attiva tra questo nodo e l'aggregatore.
- * Tutti i comandi passano da qui ed è 'synchronized' per evitare che
- * console e Downloader si accavallino sullo stesso socket.
  */
 public class AggregatorLink implements Closeable {
 

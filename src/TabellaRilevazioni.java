@@ -144,18 +144,17 @@ public class TabellaRilevazioni {
     // Piu' letture possono girare in parallelo tra loro.
     
 
-    // metodo che restituisce una mappa delle rilevazioni possedute dai nodi online, con la lista dei nodi che le possiedono
+    // metodo che restituisce una mappa delle rilevazioni presenti in tabella, con la lista dei nodi che le possiedono
     public Map<String, List<String>> listaRilevazioni() {
         startRead(); // accesso condiviso
         try {
             // Si crea una linkedhashmap per mantenere l'ordine di inserimento delle rilevazioni
             Map<String, List<String>> risultato = new LinkedHashMap<>();
-            // per ogni nodo nella tabella, se e' online, si prende la lista delle sue rilevazioni e si aggiunge alla mappa risultato
+            // per ogni nodo nella tabella si prende la lista delle sue rilevazioni e si aggiunge alla mappa risultato.
+            // Non si filtrano i nodi offline: dopo un quit le rilevazioni restano elencate in tabella
+            // (ma non accessibili al download, vedi selectProvider), come richiesto dalla traccia.
             for (InfoPeer p : peers.values()) {      
-                if (!p.isOnline()) {
-                    continue;                        
-                }
-                // si itera sulle rilevazioni del nodo online, e per ogni rilevazione si aggiunge il nodo alla lista dei possessori
+                // si itera sulle rilevazioni del nodo, e per ogni rilevazione si aggiunge il nodo alla lista dei possessori
                 for (String r : p.getSnapshotRilevazione()) { // si utilizza la copia della lista delle rilevazioni per evitare modifiche concorrenti
                     // se è la prima volta che si incontra questa rilevazione, si crea una nuova lista vuota per i nodi che la possiedono
                     if (!risultato.containsKey(r)) {    
