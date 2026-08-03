@@ -50,10 +50,10 @@ public class AggregatorLink implements Closeable {
     }
 
     // Registra il nodo sull'aggregatore e salva l'ID assegnato
-    public synchronized String register(String peerHost, int peerPort, List<String> resources) throws IOException {
+    public synchronized String register(String peerHost, int peerPort, List<String> rilevazioni) throws IOException {
         // Se non ci sono risorse locali usiamo "-" come segnaposto
-        String res = (resources == null || resources.isEmpty()) ? "-" : String.join(",", resources);
-        out.println(Protocol.REGISTER + " " + peerHost + " " + peerPort + " " + res);
+        String ril = (rilevazioni == null || rilevazioni.isEmpty()) ? "-" : String.join(",", rilevazioni);
+        out.println(Protocol.REGISTER + " " + peerHost + " " + peerPort + " " + ril);
         
         String reply = in.readLine();
         // Controllo che la risposta sia valida prima di fare lo split
@@ -71,8 +71,8 @@ public class AggregatorLink implements Closeable {
     }
 
     // Avvisa l'aggregatore che abbiamo aggiunto una nuova rilevazione
-    public synchronized void notifyAdd(String resource) throws IOException {
-        out.println(Protocol.ADD + " " + resource);
+    public synchronized void notifyAdd(String rilevazione) throws IOException {
+        out.println(Protocol.ADD + " " + rilevazione);
         in.readLine(); // Aspetta la conferma OK
     }
 
@@ -109,8 +109,8 @@ public class AggregatorLink implements Closeable {
     // Metodi usati dal Downloader durante la ricerca e scaricamento
 
     // Chiede all'aggregatore chi possiede la risorsa e il token di sessione
-    public synchronized String requestDownload(String resource) throws IOException {
-        out.println(Protocol.DOWNLOAD + " " + resource);
+    public synchronized String requestDownload(String rilevazione) throws IOException {
+        out.println(Protocol.DOWNLOAD + " " + rilevazione);
         return in.readLine();
     }
 
@@ -121,8 +121,8 @@ public class AggregatorLink implements Closeable {
     }
 
     // Notifica che il download è andato a buon fine per chiudere la sessione
-    public synchronized void done(String token, String fromPeerId, String resource) throws IOException {
-        out.println(Protocol.DONE + " " + token + " " + fromPeerId + " " + resource);
+    public synchronized void done(String token, String fromPeerId, String rilevazione) throws IOException {
+        out.println(Protocol.DONE + " " + token + " " + fromPeerId + " " + rilevazione);
         in.readLine();
     }
 }

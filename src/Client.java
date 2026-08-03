@@ -121,12 +121,12 @@ public class Client {
                     // COMANDO 1: Mostra i file salvati sul proprio computer
                     if (trimmed.equals("listdata local")) {
                         System.out.println("Risorse locali:");
-                        List<String> localResources = store.listNames();
-                        
-                        if (localResources.isEmpty()) {
+                        List<String> rilevazioniLocali = store.listNames();
+
+                        if (rilevazioniLocali.isEmpty()) {
                             System.out.println("  (nessuna risorsa locale presente)");
                         } else {
-                            for (String r : localResources) {
+                            for (String r : rilevazioniLocali) {
                                 System.out.println("- " + r);
                             }
                         }
@@ -134,12 +134,12 @@ public class Client {
                     // COMANDO 2: Chiede all'aggregatore la lista dei file disponibili su TUTTI gli altri nodi
                     } else if (trimmed.equals("listdata remote")) {
                         System.out.println("Risorse di rete:");
-                        List<String> remoteResources = aggregator.listRemote();
-                        
-                        if (remoteResources.isEmpty()) {
+                        List<String> rilevazioniRemote = aggregator.listRemote();
+
+                        if (rilevazioniRemote.isEmpty()) {
                             System.out.println("  (nessuna risorsa trovata sulla rete)");
                         } else {
-                            for (String l : remoteResources) {
+                            for (String l : rilevazioniRemote) {
                                 // Separa il nome della risorsa dalle informazioni sul nodo che la possiede
                                 String[] p = l.split("\\s+", 2);
                                 System.out.println("- " + p[0] + ": " + (p.length > 1 ? p[1] : ""));
@@ -154,14 +154,14 @@ public class Client {
                             System.out.println("Uso: add <nome> <contenuto>");
                             continue;
                         }
-                        String resourceName = parts[1];
-                        String content = parts[2];
+                        String nomeRilevazione = parts[1];
+                        String contenuto = parts[2];
 
                         // 1. Salva il file sul proprio disco
-                        store.add(resourceName, content);
+                        store.add(nomeRilevazione, contenuto);
                         // 2. Avvisa l'aggregatore: "Ehi, ora ho anche questo nuovo file"
-                        aggregator.notifyAdd(resourceName);
-                        System.out.println("Rilevazione '" + resourceName + "' aggiunta e notificata all'aggregatore.");
+                        aggregator.notifyAdd(nomeRilevazione);
+                        System.out.println("Rilevazione '" + nomeRilevazione + "' aggiunta e notificata all'aggregatore.");
 
                     // COMANDO 4: Scarica un file presente su un altro nodo della rete
                     } else if (trimmed.startsWith("download ")) {

@@ -48,8 +48,8 @@ public class LocalStore {
         if (files != null) {
             for (File f : files) {
                 if (f.isFile()) {
-                    String content = readFile(f);
-                    data.put(f.getName(), content);
+                    String contenuto = readFile(f);
+                    data.put(f.getName(), contenuto);
                 }
             }
         }
@@ -81,34 +81,34 @@ public class LocalStore {
     }
 
     /** @return true se il nodo possiede la rilevazione indicata. */
-    public synchronized boolean has(String name) {
-        if (name == null) return false;
-        return data.containsKey(name);
+    public synchronized boolean has(String rilevazione) {
+        if (rilevazione == null) return false;
+        return data.containsKey(rilevazione);
     }
 
     /** @return il contenuto testuale della rilevazione, o null se assente. */
-    public synchronized String get(String name) {
-        if (name == null) return null;
-        return data.get(name);
+    public synchronized String get(String rilevazione) {
+        if (rilevazione == null) return null;
+        return data.get(rilevazione);
     }
 
     /** Aggiunge o aggiorna una rilevazione, persistendola. */
-    public synchronized void add(String name, String content) throws IOException {
-       // Protezione da attacchi di Directory Traversal (es. name = "../file.txt")
-        if (name == null || name.contains("/") || name.contains("\\") || name.equals("..")) {
-            throw new IllegalArgumentException("Nome della rilevazione non valido o non sicuro: " + name);
+    public synchronized void add(String rilevazione, String contenuto) throws IOException {
+       // Protezione da attacchi di Directory Traversal (es. rilevazione = "../file.txt")
+        if (rilevazione == null || rilevazione.contains("/") || rilevazione.contains("\\") || rilevazione.equals("..")) {
+            throw new IllegalArgumentException("Nome della rilevazione non valido o non sicuro: " + rilevazione);
         }
-        if (content == null) {
+        if (contenuto == null) {
             throw new IllegalArgumentException("Il contenuto della rilevazione non può essere nullo");
         }
-       
+
        // 1. Aggiorna la struttura dati concorrente in memoria
-        data.put(name, content);
-        
+        data.put(rilevazione, contenuto);
+
         // 2. Persiste il dato su disco (sovrascrive se già presente)
-        File fileToSave = new File(dir, name);
+        File fileToSave = new File(dir, rilevazione);
         try (FileWriter writer = new FileWriter(fileToSave)) {
-            writer.write(content);
+            writer.write(contenuto);
         }
     }
 }

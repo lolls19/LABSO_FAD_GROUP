@@ -45,12 +45,12 @@ public class PeerRequestHandler implements Runnable {
             String[] t = line.trim().split("\\s+");
 
             if (t[0].equals(Protocol.GET)) {
-                String resource = t[1];
+                String rilevazione = t[1];
                 // Una richiesta per volta: le altre attendono qui di entrare nel blocco.
                 synchronized (serveLock) {
-                    if (store.has(resource)) {
+                    if (store.has(rilevazione)) {
                         String encoded = Base64.getEncoder().encodeToString(
-                                store.get(resource).getBytes(StandardCharsets.UTF_8));
+                                store.get(rilevazione).getBytes(StandardCharsets.UTF_8));
                         out.println(Protocol.OK + " " + encoded);
                     } else {
                         // La rilevazione non c'e' piu': innesca il protocollo robusto lato richiedente.

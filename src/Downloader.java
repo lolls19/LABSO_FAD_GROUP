@@ -31,18 +31,18 @@ public class Downloader {
         this.archivio = archivio;
     }
 
-    public void download(String resource) throws IOException { //prima di fare qualsiasi cosa in rete controlla se ha gia' la risorsa, 
+    public void download(String rilevazione) throws IOException { //prima di fare qualsiasi cosa in rete controlla se ha gia' la risorsa,
                                                              // che in caso evita download inutili
-        if (archivio.has(resource)) {
+        if (archivio.has(rilevazione)) {
             System.out.println("Rilevazione gia' presente localmente.");
             return;
         }
 //qua richiedo il primo candidato
-        String reply = aggregatore.requestDownload(resource);
+        String reply = aggregatore.requestDownload(rilevazione);
 
         while (true) { // ad ogni iterazione controllo se la risposta e'negativa e nel caso esco, perche' questa e' l'unica via d'uscita negativa del ciclo
             if (reply.startsWith(Protocol.UNAVAILABLE)) { //non c'e'
-                System.out.println("Rilevazione '" + resource + "' non disponibile sulla rete.");
+                System.out.println("Rilevazione '" + rilevazione + "' non disponibile sulla rete.");
                 return;
             }
 
@@ -52,17 +52,17 @@ public class Downloader {
             String token = t[1], providerId = t[2], host = t[3];
             int port = Integer.parseInt(t[4]);
         //si passa dall'aggregatore al peer-to-peer: mi collego all'host/porta che ho ricevuto, senza passare piu' dall'aggregatore
-            String content = fetchFromPeer(host, port, resource);
-            
+            String contenuto = fetchFromPeer(host, port, rilevazione);
+
             //CASO POSITIVO
-            if (content != null) {
-                archivio.add(resource, content);
-                aggregatore.done(token, providerId, resource);
-                System.out.println("Rilevazione '" + resource + "' scaricata da " + providerId + ".");
-                return;             //se il content ha restituito qualcosa, lo salva nell'archivio e comunica all'aggregatore un done passandogli token, providerId, 
+            if (contenuto != null) {
+                archivio.add(rilevazione, contenuto);
+                aggregatore.done(token, providerId, rilevazione);
+                System.out.println("Rilevazione '" + rilevazione + "' scaricata da " + providerId + ".");
+                return;             //se il contenuto ha restituito qualcosa, lo salva nell'archivio e comunica all'aggregatore un done passandogli token, providerId,
                 // così l'aggregatore sa quale sessione chiudere e quale nodo ha effettivamente servito il file, stampa conferma ed esce: unica via d'uscita positiva
             } else {
-                // Il nodo non possiede piu' la rilevazione, ma non si arrende: richiama l'aggregatore con retry passandogli token, 
+                // Il nodo non possiede piu' la rilevazione, ma non si arrende: richiama l'aggregatore con retry passandogli token,
                 // e providerId(nodo che ha fallito così l'aggregatore ne propone un altro).. La risposta di retry ha la stessa forma di requestDownload e il ciclo while ricomeincia da capo.
                 reply = aggregatore.retry(token, providerId);
             }
@@ -70,8 +70,8 @@ public class Downloader {
     }
 
     /** Contatta il PeerServer di un altro nodo. Ritorna il contenuto o null (NOTFOUND / errore). */
-    
-    private String fetchFromPeer(String host, int port, String resource) {
+
+    private String fetchFromPeer(String host, int port, String rilevazione) {
         try (Socket s = new Socket(host, port);
              BufferedReader in = new BufferedReader(
                      new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
@@ -80,7 +80,7 @@ public class Downloader {
 //Apre un socket TCP diretto verso il peer candidato (niente a che fare con l'aggregatore). 
     //Usa try-with-resources: socket e stream si chiudono automaticamente, anche in caso di eccezione.
 
-            out.println(Protocol.GET + " " + resource); //Invia il comando GET <rilevazione> e legge una riga di risposta
+            out.println(Protocol.GET + " " + rilevazione); //Invia il comando GET <rilevazione> e legge una riga di risposta
             String resp = in.readLine();
 
             if (resp != null && resp.startsWith(Protocol.OK)) { //Se la risposta inizia con OK, il resto della riga è il contenuto codificato in Base64.
