@@ -1,70 +1,128 @@
+import java.io.BufferedReader;
+import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Unica connessione persistente del nodo sensore verso l'aggregatore.
+ * Gestisce l'unica connessione persistente del nodo sensore verso l'aggregatore.
  * Tutti i comandi che dialogano con l'aggregatore passano da qui.
  *
- * OWNER: Membro B.
- * I metodi requestDownload/retry/done sono richiamati dal Downloader (Membro C):
- * fanno parte del contratto condiviso e le loro firme non vanno cambiate senza
- * accordo.
- *
- * NOTA: SCHELETRO. Corpi da implementare da B. Ricordarsi che la connessione e'
- * condivisa: l'accesso al socket va serializzato (metodi synchronized).
+ * I metodi sono "synchronized": la connessione e' condivisa (console e
+ * Downloader), quindi una richiesta/risposta per volta viaggia sul socket,
+ * evitando interleaving corrotti.
  */
-public class AggregatorLink {
+public class AggregatorLink implements Closeable {
 
-    /** Apre la connessione all'aggregatore. Lancia IOException se irraggiungibile. */
+    private final Socket socket;
+    private final BufferedReader in;
+    private final PrintWriter out;
+    private String peerId;
+
+    // Crea il socket e inizializza i flussi di testo in UTF-8
     public AggregatorLink(String host, int port) throws IOException {
-        // TODO (Membro B): aprire socket e stream.
-        throw new UnsupportedOperationException("TODO: AggregatorLink(host, port)");
+        this.socket = new Socket(host, port);
+        try {
+            this.in = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            // true attiva l'autoflush: ogni riga inviata parte subito
+            this.out = new PrintWriter(
+                    new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true);
+        } catch (IOException e) {
+            // Se qualcosa fallisce all'avvio, chiudo il socket per non lasciare porte aperte
+            socket.close();
+            throw e;
+        }
     }
 
-    /** Identificativo assegnato dall'aggregatore dopo la registrazione. */
-    public String getPeerId() {
-        throw new UnsupportedOperationException("TODO: getPeerId()");
+    public synchronized String getPeerId() { 
+        return peerId; 
     }
 
-    /** Indirizzo locale usato per raggiungere l'aggregatore, da annunciare ai peer. */
-    public String localAddress() {
-        throw new UnsupportedOperationException("TODO: localAddress()");
+    // Restituisce l'IP locale usato per farsi raggiungere dagli altri peer
+    public String localAddress() { 
+        return socket.getLocalAddress().getHostAddress(); 
     }
 
-    /** Registrazione all'avvio: comunica host/porta del PeerServer e le rilevazioni. */
-    public String register(String peerHost, int peerPort, List<String> resources) throws IOException {
-        throw new UnsupportedOperationException("TODO: register()");
+    // Registra il nodo sull'aggregatore e salva l'ID assegnato
+    public synchronized String register(String peerHost, int peerPort, List<String> rilevazioni) throws IOException {
+        // Se non ci sono risorse locali usiamo "-" come segnaposto
+        String ril = (rilevazioni == null || rilevazioni.isEmpty()) ? "-" : String.join(",", rilevazioni);
+        out.println(Protocol.REGISTER + " " + peerHost + " " + peerPort + " " + ril);
+        
+        String reply = in.readLine();
+        // Controllo che la risposta sia valida prima di fare lo split
+        if (reply == null || !reply.startsWith(Protocol.OK)) {
+            throw new IOException("Errore nella registrazione: " + reply);
+        }
+
+        String[] parts = reply.split("\\s+");
+        if (parts.length < 2) {
+            throw new IOException("Risposta dell'aggregatore non valida: " + reply);
+        }
+        
+        this.peerId = parts[1];
+        return this.peerId;
     }
 
-    /** Notifica l'aggiunta di una nuova rilevazione. */
-    public void notifyAdd(String resource) throws IOException {
-        throw new UnsupportedOperationException("TODO: notifyAdd()");
+    // Avvisa l'aggregatore che abbiamo aggiunto una nuova rilevazione
+    public synchronized void notifyAdd(String rilevazione) throws IOException {
+        out.println(Protocol.ADD + " " + rilevazione);
+        in.readLine(); // Aspetta la conferma OK
     }
 
-    /** Elenco delle rilevazioni remote (una riga per rilevazione, "res peer1,peer2"). */
-    public List<String> listRemote() throws IOException {
-        throw new UnsupportedOperationException("TODO: listRemote()");
+    // Chiede la lista delle rilevazioni disponibili sulla rete
+    public synchronized List<String> listRemote() throws IOException {
+        out.println(Protocol.LIST);
+        List<String> lines = new ArrayList<>();
+        String line;
+        // Legge le righe finché l'aggregatore non invia il segnale END
+        while ((line = in.readLine()) != null && !line.equals(Protocol.END)) {
+            lines.add(line);
+        }
+        return lines;
     }
 
-    /** Comunica la disconnessione ordinata e chiude la connessione. */
-    public void disconnect() throws IOException {
-        throw new UnsupportedOperationException("TODO: disconnect()");
+    // Saluta l'aggregatore e chiude la connessione
+    public synchronized void disconnect() throws IOException {
+        try {
+            out.println(Protocol.DISCONNECT);
+            in.readLine(); // Aspetta l'OK finale
+        } finally {
+            close(); // Chiude il socket anche se il comando sopra fallisce
+        }
     }
 
-    // --- Contratto per il Downloader (Membro C) ---
-
-    /** Avvia la sessione di download: ritorna "PEER ..." oppure "UNAVAILABLE". */
-    public String requestDownload(String resource) throws IOException {
-        throw new UnsupportedOperationException("TODO: requestDownload()");
+    // Rilascia le risorse della rete
+    @Override
+    public synchronized void close() throws IOException {
+        if (!socket.isClosed()) {
+            socket.close();
+        }
     }
 
-    /** Segnala un tentativo fallito e chiede un altro nodo: "PEER ..." o "UNAVAILABLE". */
-    public String retry(String token, String failedPeerId) throws IOException {
-        throw new UnsupportedOperationException("TODO: retry()");
+    // Metodi usati dal Downloader durante la ricerca e scaricamento
+
+    // Chiede all'aggregatore chi possiede la risorsa e il token di sessione
+    public synchronized String requestDownload(String rilevazione) throws IOException {
+        out.println(Protocol.DOWNLOAD + " " + rilevazione);
+        return in.readLine();
     }
 
-    /** Conferma il download riuscito e rilascia il token. */
-    public void done(String token, String fromPeerId, String resource) throws IOException {
-        throw new UnsupportedOperationException("TODO: done()");
+    // Segnala che il nodo indicato ha fallito e chiede un'alternativa
+    public synchronized String retry(String token, String failedPeerId) throws IOException {
+        out.println(Protocol.RETRY + " " + token + " " + failedPeerId);
+        return in.readLine();
+    }
+
+    // Notifica che il download è andato a buon fine per chiudere la sessione
+    public synchronized void done(String token, String fromPeerId, String rilevazione) throws IOException {
+        out.println(Protocol.DONE + " " + token + " " + fromPeerId + " " + rilevazione);
+        in.readLine();
     }
 }

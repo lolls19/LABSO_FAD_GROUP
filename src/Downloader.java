@@ -1,0 +1,102 @@
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
+/**
+ * Implementa il comando "download <rilevazione>" lato nodo richiedente, con il
+ * PROTOCOLLO DI DOWNLOAD ROBUSTO richiesto dalle specifiche:
+ *
+ *  1. chiede all'aggregatore token + nodo che possiede la rilevazione;
+ *  2. si connette a quel nodo e prova a scaricare;
+ *  3. se il nodo non ce l'ha piu' (NOTFOUND), informa l'aggregatore (RETRY),
+ *     che rimuove la entry fallita e propone un altro nodo;
+ *  4. ripete finche' scarica la rilevazione (DONE) oppure l'aggregatore non ha
+ *     piu' nodi da proporre (UNAVAILABLE = "non disponibile sulla rete").
+ *
+ * Al termine la sessione sull'aggregatore si chiude: il token viene rilasciato.
+ *
+ */
+public class Downloader {
+
+    private final AggregatorLink aggregatore;
+    private final LocalStore archivio;
+
+    public Downloader(AggregatorLink aggregatore, LocalStore archivio) {
+        this.aggregatore = aggregatore;
+        this.archivio = archivio;
+    }
+
+    public void download(String rilevazione) throws IOException { //prima di fare qualsiasi cosa in rete controlla se ha gia' la risorsa,
+                                                             // che in caso evita download inutili
+        if (archivio.has(rilevazione)) {
+            System.out.println("Rilevazione gia' presente localmente.");
+            return;
+        }
+//qua richiedo il primo candidato
+        String reply = aggregatore.requestDownload(rilevazione);
+
+        while (true) { // ad ogni iterazione controllo se la risposta e'negativa e nel caso esco, perche' questa e' l'unica via d'uscita negativa del ciclo
+            if (reply.startsWith(Protocol.UNAVAILABLE)) { //non c'e'
+                System.out.println("Rilevazione '" + rilevazione + "' non disponibile sulla rete.");
+                return;
+            }
+
+        //se non e' negativa spezzo la riga su piu' spazi (split): t[0] e' la parola peer (non usata), t[1] e' token, ecc.
+        //!!!questo presuppone che il formato sia sempre esatto, qualora l'aggregatore mandasse un input errato, soppierebbe un eccezione che non viene gestista!!!
+            String[] t = reply.split("\\s+");
+            String token = t[1], providerId = t[2], host = t[3];
+            int port = Integer.parseInt(t[4]);
+        //si passa dall'aggregatore al peer-to-peer: mi collego all'host/porta che ho ricevuto, senza passare piu' dall'aggregatore
+            String contenuto = fetchFromPeer(host, port, rilevazione);
+
+            //CASO POSITIVO
+            if (contenuto != null) {
+                archivio.add(rilevazione, contenuto);
+                aggregatore.done(token, providerId, rilevazione);
+                System.out.println("Rilevazione '" + rilevazione + "' scaricata da " + providerId + ".");
+                return;             //se il contenuto ha restituito qualcosa, lo salva nell'archivio e comunica all'aggregatore un done passandogli token, providerId,
+                // così l'aggregatore sa quale sessione chiudere e quale nodo ha effettivamente servito il file, stampa conferma ed esce: unica via d'uscita positiva
+            } else {
+                // Il nodo non possiede piu' la rilevazione, ma non si arrende: richiama l'aggregatore con retry passandogli token,
+                // e providerId(nodo che ha fallito così l'aggregatore ne propone un altro).. La risposta di retry ha la stessa forma di requestDownload e il ciclo while ricomeincia da capo.
+                reply = aggregatore.retry(token, providerId);
+            }
+        }
+    }
+
+    /** Contatta il PeerServer di un altro nodo. Ritorna il contenuto o null (NOTFOUND / errore). */
+
+    private String fetchFromPeer(String host, int port, String rilevazione) {
+        try (Socket s = new Socket(host, port);
+             BufferedReader in = new BufferedReader(
+                     new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
+             PrintWriter out = new PrintWriter(
+                     new OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8), true)) {
+//Apre un socket TCP diretto verso il peer candidato (niente a che fare con l'aggregatore). 
+    //Usa try-with-resources: socket e stream si chiudono automaticamente, anche in caso di eccezione.
+
+            out.println(Protocol.GET + " " + rilevazione); //Invia il comando GET <rilevazione> e legge una riga di risposta
+            String resp = in.readLine();
+
+            if (resp != null && resp.startsWith(Protocol.OK)) { //Se la risposta inizia con OK, il resto della riga è il contenuto codificato in Base64.
+            // Lo decodifica e lo restituisce come stringa UTF-8.
+                String encoded = resp.substring(Protocol.OK.length()).trim();
+                return new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
+            }
+            return null; // Se la risposta e' NOTFOUND
+
+        } catch (IOException e) {
+            return null; // nodo irraggiungibile -> trattato come tentativo fallito
+            //Se il peer non risponde proprio (offline, connessione rifiutata, timeout...), 
+            //non propaga l'eccezione: la traduce in null, cioè lo tratta esattamente come un NOTFOUND. 
+            //Questa è una scelta di design precisa: dal punto di vista del download(), 
+            //"il peer non ce l'ha" e "il peer non c'è più" sono la stessa cosa. 
+            //in entrambi i casi serve solo chiedere un altro candidato, non bloccare tutto con un'eccezione fatale.
+        }
+    }
+}
