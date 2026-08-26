@@ -6,8 +6,11 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /*
 permette di il dialogo con un nodo sensore. Ogni nodo che si connette al server viene
@@ -110,7 +113,11 @@ public class GestoreNodo implements Runnable {
                 scrittore.println(Protocol.END);
             }
 
-            // DOWNLOAD  ancora da implementare
+            // DOWNLOAD <rilevazione>  -> il nodo cerca un fornitore da cui scaricare la rilevazione
+            case Protocol.DOWNLOAD -> {
+                gestisciSessioneDownload(campi[1], lettore, scrittore);
+            }
+
             // DISCONNECT  -> il nodo si disconnette in modo ordinato
             case Protocol.DISCONNECT -> {
                 scrittore.println(Protocol.OK);
@@ -122,6 +129,66 @@ public class GestoreNodo implements Runnable {
             }
         }
         return true;
+    }
+
+    /*
+      Gestisce l'intera sessione di download di una rilevazione: cerca un fornitore,
+      lo propone al richiedente e resta in ascolto finche' non arriva un esito (DONE)
+      o il richiedente chiede un altro fornitore (RETRY).
+     */
+    private void gestisciSessioneDownload(String rilevazione, BufferedReader lettore, PrintWriter scrittore) throws IOException {
+        // token che identifica questa sessione, cosi' i messaggi successivi si riferiscono ad essa
+        String token = UUID.randomUUID().toString();
+
+        // nodi gia' proposti e scartati, per non riproporli
+        Set<String> esclusi = new HashSet<>();
+
+        // cerca un primo fornitore per la rilevazione richiesta
+        InfoPeer fornitore = tabella.selectProvider(rilevazione, esclusi);
+        if (fornitore == null) {
+            registro.registra(rilevazione, "-", peerId, false);
+            scrittore.println(Protocol.UNAVAILABLE);
+            return;
+        }
+        scrittore.println(Protocol.PEER + " " + token + " " + fornitore.getPeerId() + " " + fornitore.getHost() + " " + fornitore.getPort());
+
+        // attende gli esiti del download diretto tra richiedente e fornitore
+        String riga;
+        while ((riga = lettore.readLine()) != null) {
+            String[] campi = riga.trim().split("\\s+");
+            String comando = campi[0];
+
+            switch (comando) {
+                // il richiedente ha scaricato con successo dal fornitore
+                case Protocol.DONE -> {
+                    tabella.addRilevazione(peerId, rilevazione);
+                    registro.registra(rilevazione, campi[2], peerId, true);
+                    scrittore.println(Protocol.OK);
+                    return;
+                }
+
+                // il fornitore proposto non ha risposto, si esclude e se ne cerca un altro
+                case Protocol.RETRY -> {
+                    String fallito = campi[2];
+                    esclusi.add(fallito);
+                    tabella.removeEntryRilevazione(fallito, rilevazione);
+
+                    fornitore = tabella.selectProvider(rilevazione, esclusi);
+                    if (fornitore == null) {
+                        registro.registra(rilevazione, "-", peerId, false);
+                        scrittore.println(Protocol.UNAVAILABLE);
+                        return;
+                    }
+                    scrittore.println(Protocol.PEER + " " + token + " " + fornitore.getPeerId() + " " + fornitore.getHost() + " " + fornitore.getPort());
+                }
+
+                // qualsiasi altro messaggio non e' atteso in questa fase
+                default -> {
+                    scrittore.println(Protocol.ERR + " comando sconosciuto");
+                    return;
+                }
+            }
+        }
     }
 
 }
