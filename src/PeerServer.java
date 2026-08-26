@@ -12,8 +12,9 @@ import java.net.Socket;
  * all'aggregatore in fase di registrazione.
  *
  * Espone il "serveLock" condiviso che realizza la regola "una richiesta per
- * volta" (vedi PeerRequestHandler): ogni handler entra in un blocco
- * synchronized(serveLock) prima di servire la richiesta.
+ * volta" (vedi PeerRequestHandler): e' una FifoQueue, quindi gli handler sono
+ * serviti nell'ordine di arrivo, e ognuno la acquisisce prima di servire la
+ * richiesta e la rilascia al termine.
  *
 
  */
@@ -21,7 +22,7 @@ public class PeerServer implements Runnable {
 
     private final ServerSocket serverSocket;
     private final LocalStore store;
-    private final Object serveLock = new Object();
+    private final FifoQueue serveLock = new FifoQueue();
     private volatile boolean running = true;
 
     public PeerServer(LocalStore store) throws IOException {

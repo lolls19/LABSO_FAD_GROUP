@@ -13,10 +13,11 @@ import java.util.Base64;
  *
  * MECCANISMO DI SINCRONIZZAZIONE #2 (lato nodo sensore):
  * il nodo serve una richiesta per volta. Tutti i PeerRequestHandler del nodo
- * condividono lo stesso oggetto "serveLock": prima di servire la richiesta
- * l'handler entra in un blocco synchronized(serveLock), cosi' ogni altra
- * richiesta indirizzata a questo nodo resta in attesa del lock fino al
- * completamento, senza terminare con errore.
+ * condividono la stessa FifoQueue "serveLock": prima di servire la richiesta
+ * l'handler chiama acquisisciLock() e al termine rilascioLock(), cosi' ogni
+ * altra richiesta indirizzata a questo nodo resta in attesa fino al
+ * completamento, senza terminare con errore. Essendo una coda FIFO, le
+ * richieste vengono servite nell'ordine in cui sono arrivate.
  *
 
  */
@@ -24,9 +25,9 @@ public class PeerRequestHandler implements Runnable {
 
     private final Socket socket;
     private final LocalStore store;
-    private final Object serveLock;
+    private final FifoQueue serveLock;
 
-    public PeerRequestHandler(Socket socket, LocalStore store, Object serveLock) {
+    public PeerRequestHandler(Socket socket, LocalStore store, FifoQueue serveLock) {
         this.socket = socket;
         this.store = store;
         this.serveLock = serveLock;
@@ -46,8 +47,9 @@ public class PeerRequestHandler implements Runnable {
 
             if (t[0].equals(Protocol.GET)) {
                 String rilevazione = t[1];
-                // Una richiesta per volta: le altre attendono qui di entrare nel blocco.
-                synchronized (serveLock) {
+                // Una richiesta per volta: le altre attendono qui il proprio turno.
+                serveLock.acquisisciLock();
+                try {
                     if (store.has(rilevazione)) {
                         String encoded = Base64.getEncoder().encodeToString(
                                 store.get(rilevazione).getBytes(StandardCharsets.UTF_8));
@@ -56,6 +58,10 @@ public class PeerRequestHandler implements Runnable {
                         // La rilevazione non c'e' piu': innesca il protocollo robusto lato richiedente.
                         out.println(Protocol.NOTFOUND);
                     }
+                } finally {
+                    // Il rilascio deve avvenire comunque, altrimenti la coda si blocca
+                    // per tutte le richieste successive.
+                    serveLock.rilascioLock();
                 }
             } else {
                 out.println(Protocol.ERR + " comando peer sconosciuto");
