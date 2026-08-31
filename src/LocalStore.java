@@ -9,29 +9,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Archivio locale delle rilevazioni di un nodo sensore.
- * Ogni rilevazione ha un nome univoco e un contenuto testuale.
- *
- * OWNER: Membro B. Usato in lettura da Membro C (PeerRequestHandler, Downloader).
- *
- * NOTA: questo e' lo SCHELETRO condiviso. Le firme dei metodi NON vanno cambiate
- * senza avvisare B e C, perche' sono il contratto tra i due moduli del sensore.
- * I corpi vanno implementati da B.
+ * Gestisce la persistenza locale e la cache in memoria delle rilevazioni del nodo.
+ * Mantiene disallineamenti nulli tra File System e memoria interna, garantendo l'accesso 
+ * thread-safe sincrono per le operazioni di lettura e scrittura concorrenti.
  */
 public class LocalStore {
 
-    /**
-     * Prepara l'archivio del nodo (es. una cartella dedicata) e carica le
-     * rilevazioni gia' presenti / pre-allocate.
-     * @param nodeName nome del nodo, usato per la cartella di storage.
-     */
-
-    // Campi raggruppati all'inizio della classe
     private final File dir;
     private final Map<String, String> data = new HashMap<>();
 
+    /**
+     * Inizializza la directory di storage per il nodo specifico e carica in memoria 
+     * le rilevazioni preesistenti lette da disco.
+     */
     public LocalStore(String nodeName) throws IOException {
-        // Validazione dell'input per evitare percorsi nulli o vuoti
         if (nodeName == null || nodeName.trim().isEmpty()) {
             throw new IllegalArgumentException("Il nome del nodo non può essere vuoto");
         }
@@ -43,7 +34,6 @@ public class LocalStore {
             }
         }
 
-        // Carica le rilevazioni già presenti
         File[] files = dir.listFiles();
         if (files != null) {
             for (File f : files) {
@@ -56,8 +46,7 @@ public class LocalStore {
     }
 
     /**
-     * Metodo di supporto privato per leggere il file riga per riga.
-     * Implementato con BufferedReader per rispettare le specifiche di B.
+     * Legge il contenuto testuale di un file da disco ricostruendolo riga per riga.
      */
     private String readFile(File file) throws IOException {
         StringBuilder sb = new StringBuilder();
@@ -75,26 +64,34 @@ public class LocalStore {
         return sb.toString();
     }
 
-    /** @return i nomi di tutte le rilevazioni possedute dal nodo. */
+    /**
+     * Restituisce una copia thread-safe dell'elenco dei nomi delle rilevazioni memorizzate.
+     */
     public synchronized List<String> listNames() {
         return new ArrayList<>(data.keySet());
     }
 
-    /** @return true se il nodo possiede la rilevazione indicata. */
+    /**
+     * Verifica la presenza di una specifica rilevazione nell'archivio locale.
+     */
     public synchronized boolean has(String rilevazione) {
         if (rilevazione == null) return false;
         return data.containsKey(rilevazione);
     }
 
-    /** @return il contenuto testuale della rilevazione, o null se assente. */
+    /**
+     * Recupera il contenuto della rilevazione indicata, o null se non presente.
+     */
     public synchronized String get(String rilevazione) {
         if (rilevazione == null) return null;
         return data.get(rilevazione);
     }
 
-    /** Aggiunge o aggiorna una rilevazione, persistendola. */
+    /**
+     * Valida il nome contro attacchi di Path Traversal, salva la rilevazione su file system 
+     * e aggiorna la mappa in memoria in modo atomico rispetto ad altri thread.
+     */
     public synchronized void add(String rilevazione, String contenuto) throws IOException {
-       // Protezione da attacchi di Directory Traversal (es. rilevazione = "../file.txt")
         if (rilevazione == null || rilevazione.contains("/") || rilevazione.contains("\\") || rilevazione.equals("..")) {
             throw new IllegalArgumentException("Nome della rilevazione non valido o non sicuro: " + rilevazione);
         }
@@ -102,10 +99,8 @@ public class LocalStore {
             throw new IllegalArgumentException("Il contenuto della rilevazione non può essere nullo");
         }
 
-       // 1. Aggiorna la struttura dati concorrente in memoria
         data.put(rilevazione, contenuto);
 
-        // 2. Persiste il dato su disco (sovrascrive se già presente)
         File fileToSave = new File(dir, rilevazione);
         try (FileWriter writer = new FileWriter(fileToSave)) {
             writer.write(contenuto);
