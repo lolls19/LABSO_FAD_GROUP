@@ -27,7 +27,7 @@ public class PeerServer implements Runnable {
 
     public PeerServer(LocalStore store) throws IOException {
         this.store = store;
-        this.serverSocket = new ServerSocket(0); // porta effimera assegnata dall'OS
+        this.serverSocket = new ServerSocket(0);
     }
 
     public int getPort() { return serverSocket.getLocalPort(); }
