@@ -49,14 +49,14 @@ public class LocalStore {
      */
     private String readFile(File file) throws IOException {
         StringBuilder sb = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            String line;
+        try (BufferedReader lettore = new BufferedReader(new FileReader(file))) {
+            String riga;
             boolean first = true;
-            while ((line = reader.readLine()) != null) {
+            while ((riga = lettore.readLine()) != null) {
                 if (!first) {
                     sb.append("\n");
                 }
-                sb.append(line);
+                sb.append(riga);
                 first = false;
             }
         }

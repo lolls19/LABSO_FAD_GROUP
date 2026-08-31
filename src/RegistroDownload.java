@@ -1,27 +1,37 @@
-
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/*
+ * Questa classe tiene lo storico di tutti i download avvenuti nella rete, sia
+ * quelli riusciti sia quelli falliti, cosi' che l'aggregatore possa stamparlo con
+ * il comando "log". Ogni volta che una sessione di download si chiude (con
+ * successo o con un fallimento definitivo), GestoreNodo registra qui una nuova
+ * voce con orario, rilevazione, nodo sorgente, nodo destinatario ed esito.
+ *
+ * Puo' essere usata da piu' thread contemporaneamente (un thread per ogni nodo
+ * collegato), quindi sia la scrittura di una nuova voce sia la lettura di tutto
+ * lo storico sono protette con synchronized.
+ */
 public class RegistroDownload {
-    // Un solo formattatore condiviso: mostra ore e minuti 
 
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm");
 
-    /*classe che rappresenta una singola voce del registro, immutabile e con campi final.
-    contiene orario, rilevazione, nodo sorgente, nodo destinatario ed esito del download.
+    /*
+     * Rappresenta una singola voce dello storico: e' immutabile (tutti i campi
+     * sono final) perche' una volta registrato un evento non ha senso che cambi.
      */
     public static class Entry {
 
-        private final LocalTime time;    // orario dell'evento
-        private final String rilevazione;   // nome della rilevazione
-        private final String nodoSorgente;       // nodo sorgente (da cui si scarica)
-        private final String nodoDestinatario;         // nodo destinatario (che scarica)
-        private final boolean esitoDownload;   // esito del download
+        private final LocalTime time;
+        private final String rilevazione;
+        private final String nodoSorgente;
+        private final String nodoDestinatario;
+        private final boolean esitoDownload;
 
-        // Il costruttore riceve i dati e li salva nei campi.
+        // Costruttore: salva tutti i dati dell'evento cosi' come vengono passati.
         public Entry(LocalTime time, String rilevazione, String nSorgente, String nDestinatario, boolean esito) {
             this.time = time;
             this.rilevazione = rilevazione;
@@ -30,7 +40,7 @@ public class RegistroDownload {
             this.esitoDownload = esito;
         }
 
-        // Getter per i campi, non serve synchronized perché sono final e immutabili
+        // Semplici getter per leggere i campi della voce dall'esterno.
         public LocalTime getTime() {
             return time;
         }
@@ -51,12 +61,10 @@ public class RegistroDownload {
             return esitoDownload;
         }
 
-        // Come la voce viene trasformata in testo per il comando "log".
+        // Trasforma la voce nella riga di testo che viene stampata dal comando "log": orario,
+        // rilevazione, nodo sorgente e destinatario, con in piu' l'etichetta "(Download fallito)"
+        // se l'esito non e' stato positivo.
         @Override
-        //nel caso di download fallito, aggiunge l'etichetta "(Download fallito)" alla stringa finale
-        //altrimenti lascia la stringa vuota.
-        //successivamente compone la riga con orario formattato, rilevazione, sorgente, destinatario ed esito.
-
         public String toString() {
             String esito = esitoDownload ? "" : " (Download fallito)";
 
@@ -64,42 +72,21 @@ public class RegistroDownload {
                     time.format(formatter), rilevazione, nodoSorgente, nodoDestinatario, esito);
         }
     }
-    // La lista che conserva tutte le voci, in ordine di inserimento.
-    // l'unico modo di utilizzarla e' tramite i metodi sotto
-    // che sono synchronized.
+
     private final List<Entry> entries = new ArrayList<>();
 
-     /*
-     * Registra un nuovo evento di download.
-     * Chiamato dai ClientHandler (thread diversi) quando un download termina.
-     *
-     * E' 'synchronized' perche' piu' thread potrebbero chiamarlo insieme:
-     * senza sincronizzazione, due aggiunte simultanee alla stessa ArrayList
-     * potrebbero corromperla. Il lock garantisce che una scrittura per volta
-     * modifichi la lista.
-     *
-     * Nota: l'orario viene preso qui con LocalTime.now(), cioe' nel momento
-     * esatto della registrazione.
-     */
+    // Aggiunge una nuova voce allo storico, prendendo l'orario attuale nel momento esatto in cui
+    // viene chiamato. E' synchronized perche' thread diversi potrebbero chiamarlo nello stesso
+    // istante, e senza protezione due aggiunte contemporanee potrebbero corrompere la lista.
     public synchronized void registra(String rilevazione, String nodoSorgente, String nodoDestinatario, boolean esito) {
         entries.add(new Entry(LocalTime.now(), rilevazione, nodoSorgente, nodoDestinatario, esito));
     }
 
-    /*
-         Restituisce l'elenco delle voci per il comando "log".
-            E' 'synchronized' perche' piu' thread potrebbero chiamarlo insieme.
-            Senza sincronizzazione, due letture simultanee della stessa ArrayList
-            potrebbero restituire dati incoerenti. Il lock garantisce che una lettura per volta
-            legga la lista.
-            restituisce una copia della lista interna, avvolta in una lista di sola lettura.
-            In questo modo, chi riceve la lista non vede le voci aggiunte dopo, e soprattutto non puo' modificarla. Restituire direttamente 'entries' esporrebbe il cuore della
-            classe a modifiche esterne. 
-            inoltre, Collections.unmodifiableList() avvolge la copia in una lista di 
-            sola lettura: se qualcuno provasse ad aggiungere o rimuovere, otterrebbe
-            un errore, doppia protezione.
-     */
+    // Restituisce tutte le voci registrate finora, usato dal comando "log". E' synchronized per lo
+    // stesso motivo di registra(), e restituisce una copia avvolta in una lista non modificabile:
+    // cosi' chi la riceve non vede eventuali voci aggiunte dopo e soprattutto non puo' alterare
+    // per errore lo storico originale.
     public synchronized List<Entry> getEntries() {
         return Collections.unmodifiableList(new ArrayList<>(entries));
     }
 }
-

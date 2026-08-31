@@ -17,8 +17,8 @@ import java.util.List;
 public class AggregatorLink implements Closeable {
 
     private final Socket socket;
-    private final BufferedReader in;
-    private final PrintWriter out;
+    private final BufferedReader lettore;
+    private final PrintWriter scrittore;
     private String peerId;
 
     /**
@@ -28,7 +28,7 @@ public class AggregatorLink implements Closeable {
     public AggregatorLink(String host, int port) throws IOException {
         this.socket = new Socket(host, port);
         try {
-            this.in = new BufferedReader(
+            this.lettore = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
             this.out = new PrintWriter(
                     new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true);
@@ -65,12 +65,12 @@ public class AggregatorLink implements Closeable {
             throw new IOException("Errore nella registrazione: " + reply);
         }
 
-        String[] parts = reply.split("\\s+");
-        if (parts.length < 2) {
-            throw new IOException("Risposta dell'aggregatore non valida: " + reply);
+        String[] campi = riga.split("\\s+");
+        if (campi.length < 2) {
+            throw new IOException("Risposta dell'aggregatore non valida: " + riga);
         }
-        
-        this.peerId = parts[1];
+
+        this.peerId = campi[1];
         return this.peerId;
     }
 
@@ -92,7 +92,7 @@ public class AggregatorLink implements Closeable {
         while ((line = in.readLine()) != null && !line.equals(Protocol.END)) {
             lines.add(line);
         }
-        return lines;
+        return righe;
     }
 
     /**
@@ -121,23 +121,23 @@ public class AggregatorLink implements Closeable {
      * Avvia il flusso di download per una risorsa, ricevendo dall'aggregatore il nodo sorgente e il token.
      */
     public synchronized String requestDownload(String rilevazione) throws IOException {
-        out.println(Protocol.DOWNLOAD + " " + rilevazione);
-        return in.readLine();
+        scrittore.println(Protocol.DOWNLOAD + " " + rilevazione);
+        return lettore.readLine();
     }
 
     /**
      * Segnala il fallimento di un peer sorgente e ottiene una posizione alternativa dall'aggregatore.
      */
     public synchronized String retry(String token, String failedPeerId) throws IOException {
-        out.println(Protocol.RETRY + " " + token + " " + failedPeerId);
-        return in.readLine();
+        scrittore.println(Protocol.RETRY + " " + token + " " + failedPeerId);
+        return lettore.readLine();
     }
 
     /**
      * Conferma il completamento del download consentendo all'aggregatore di validare la sessione.
      */
     public synchronized void done(String token, String fromPeerId, String rilevazione) throws IOException {
-        out.println(Protocol.DONE + " " + token + " " + fromPeerId + " " + rilevazione);
-        in.readLine();
+        scrittore.println(Protocol.DONE + " " + token + " " + fromPeerId + " " + rilevazione);
+        lettore.readLine();
     }
 }

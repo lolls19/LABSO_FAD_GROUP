@@ -103,7 +103,7 @@ public class Client {
 
                     } else if (trimmed.equals("listdata remote")) {
                         System.out.println("Risorse di rete:");
-                        List<String> rilevazioniRemote = aggregator.listRemote();
+                        List<String> rilevazioniRemote = aggregatore.listRemote();
 
                         if (rilevazioniRemote.isEmpty()) {
                             System.out.println("  (nessuna risorsa trovata sulla rete)");
@@ -120,16 +120,16 @@ public class Client {
                             System.out.println("Uso: add <nome> <contenuto>");
                             continue;
                         }
-                        String nomeRilevazione = parts[1];
-                        String contenuto = parts[2];
+                        String nomeRilevazione = campi[1];
+                        String contenuto = campi[2];
 
                         store.add(nomeRilevazione, contenuto);
                         aggregator.notifyAdd(nomeRilevazione);
                         System.out.println("Rilevazione '" + nomeRilevazione + "' aggiunta e notificata all'aggregatore.");
 
                     } else if (trimmed.startsWith("download ")) {
-                        String[] parts = trimmed.split("\\s+", 2);
-                        if (parts.length < 2) {
+                        String[] campi = trimmed.split("\\s+", 2);
+                        if (campi.length < 2) {
                             System.out.println("Uso: download <nome>");
                             continue;
                         }
@@ -164,7 +164,7 @@ public class Client {
         }
         if (aggregator != null) {
             try {
-                aggregator.disconnect();
+                aggregatore.disconnect();
             } catch (IOException ignored) {
             }
         }
