@@ -1,15 +1,19 @@
-/**
- * Definizione centralizzata del protocollo testuale usato sia tra Client e
- * Aggregatore, sia tra due Client (scambio peer-to-peer).
+/*
+ * Questa classe raccoglie tutte le parole chiave del protocollo testuale usato per
+ * far comunicare tra loro Client e Aggregatore, e i Client tra di loro (scambio
+ * peer-to-peer). Invece di scrivere le stringhe "a mano" in giro per il codice,
+ * ogni comando e ogni risposta e' definito una sola volta qui come costante, cosi'
+ * se un domani cambia il nome di un comando basta modificarlo in un punto solo.
  *
- * Ogni messaggio e' una riga di testo UTF-8 terminata da newline.
- * I token sono separati da spazi. Il contenuto delle rilevazioni viaggia
- * sempre codificato in Base64, cosi' da non contenere spazi o newline.
- *
- * OWNER: condiviso — da definire INSIEME nella sessione iniziale.
+ * Ogni messaggio scambiato e' semplicemente una riga di testo in UTF-8 che finisce
+ * con un a-capo; le varie parti del messaggio (comando e argomenti) sono separate
+ * da spazi. Il contenuto delle rilevazioni viene sempre mandato codificato in
+ * Base64 proprio per evitare che contenga spazi o a-capo che romperebbero il
+ * formato a righe.
  */
 public final class Protocol {
 
+    // Costruttore privato: questa classe serve solo a contenere costanti, non ha senso crearne istanze.
     private Protocol() { }
 
     // ----- Client -> Aggregatore -----

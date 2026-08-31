@@ -3,18 +3,20 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 /*
-  Ciclo di accettazione delle connessioni dei nodi sensore.
-  Per ogni nodo che si collega, avvia un GestoreNodo su un thread dedicato,
-  cosi' che l'aggregatore possa servire piu' nodi in parallelo.
- Gira su un proprio thread di background per non bloccare la console.
+ * Questa classe e' il "portiere" dell'aggregatore: resta in ascolto sulla porta
+ * indicata e, ogni volta che un nodo sensore si collega, crea un GestoreNodo
+ * dedicato su un thread separato per occuparsi di quella connessione. In questo
+ * modo l'aggregatore puo' accettare e servire piu' nodi in parallelo, invece di
+ * doversi occupare di uno alla volta. Gira su un proprio thread di background,
+ * cosi' il thread principale resta libero di gestire la console interattiva.
  */
 public class ServerAggregatore implements Runnable {
 
-    private final int port;                    // porta su cui l'aggregatore ascolta
-    private final TabellaRilevazioni tabella;  // tabella condivisa
-    private final RegistroDownload registro;   // registro dei download condiviso
-    private volatile boolean running = true;   // flag per il ciclo di ascolto: true=continua, false=termina
-    private ServerSocket serverSocket;         // il socket in ascolto (creato in run)
+    private final int port;
+    private final TabellaRilevazioni tabella;
+    private final RegistroDownload registro;
+    private volatile boolean running = true;
+    private ServerSocket serverSocket;
 
     public ServerAggregatore(int port, TabellaRilevazioni tabella, RegistroDownload registro) {
         this.port = port;
@@ -22,45 +24,37 @@ public class ServerAggregatore implements Runnable {
         this.registro = registro;
     }
 
+    // Apre il socket in ascolto sulla porta indicata e resta in un ciclo ad accettare nuove
+    // connessioni finche' running resta true: per ogni nodo che si collega crea un GestoreNodo e
+    // lo avvia su un thread daemon dedicato, cosi' puo' tornare subito ad accettare la connessione
+    // successiva senza aspettare che quella corrente finisca. Se il socket viene chiuso da
+    // shutdown() mentre il server e' ancora "running", l'eccezione che ne deriva viene ignorata
+    // perche' e' l'effetto voluto della chiusura volontaria; altrimenti viene stampato un errore.
     @Override
     public void run() {
         try {
-            // Apre il socket in ascolto sulla porta indicata.
-            // Da qui in poi l'aggregatore puo' ricevere connessioni dai nodi.
             serverSocket = new ServerSocket(port);
             System.out.println("Aggregatore in ascolto sulla porta " + port);
 
-            // Ciclo principale: resta in ascolto finchè running è true.
             while (running) {
-                // accept() è bloccante, il thread si ferma qui finche' un nodo
-                // non si connette. Quando arriva una connessione, restituisce il
-                // socket per dialogare con quel nodo.
                 Socket client = serverSocket.accept();
 
-                // Per ogni nodo crea un GestoreNodo e lo avvia su un thread
-                // dedicato, così l'aggregatore serve più nodi contemporaneamente
-                // e può tornare subito ad accettare la connessione successiva
                 Thread t = new Thread(new GestoreNodo(client, tabella, registro));
-                t.setDaemon(true);  // thread subordinato: non impedisce la chiusura del programma
+                t.setDaemon(true);
                 t.start();
             }
         } catch (IOException e) {
-            // Se running è false, significa che il server è stato chiuso volontariamente
-            //con lo shutdown() della console. In tal caso, non stampare l'errore.
-            //altrimenti, se running è true, significa che c'è stato un errore imprevisto e
-            // lo stampa
             if (running) System.err.println("Errore server: " + e.getMessage());
         }
     }
 
-    //chiude il server di ascolto e termina il ciclo di run(), grazie al flag running=false. 
-    // Il thread di run() termina e il server si chiude.
-    // si richiama dalla console quando si digita "quit"
+    // Ferma il server: imposta running a false e chiude il socket in ascolto, cosi' la accept()
+    // bloccata in run() si sblocca subito con un'eccezione (che verra' ignorata proprio perche'
+    // running e' ormai false) e il ciclo termina. Viene chiamato dalla console quando si digita
+    // "quit".
     public void shutdown() {
-        running = false;               
+        running = false;
         try {
-            //  chiude il socket in ascolto. Questo sblocca la accept() bloccata,
-            //    lancia una IOException che, essendo running=false, viene ignorata.
             if (serverSocket != null) serverSocket.close();
         } catch (IOException ignored) { }
     }

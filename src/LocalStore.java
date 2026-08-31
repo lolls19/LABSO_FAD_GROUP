@@ -8,30 +8,27 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Archivio locale delle rilevazioni di un nodo sensore.
- * Ogni rilevazione ha un nome univoco e un contenuto testuale.
- *
- * OWNER: Membro B. Usato in lettura da Membro C (PeerRequestHandler, Downloader).
- *
- * NOTA: questo e' lo SCHELETRO condiviso. Le firme dei metodi NON vanno cambiate
- * senza avvisare B e C, perche' sono il contratto tra i due moduli del sensore.
- * I corpi vanno implementati da B.
+/*
+ * Questa classe rappresenta l'archivio locale delle rilevazioni di un nodo
+ * sensore: ogni rilevazione e' identificata da un nome univoco e ha un contenuto
+ * testuale. I dati vengono tenuti in memoria (in una mappa) per un accesso
+ * veloce, ma vengono anche salvati su disco dentro una cartella dedicata al
+ * nodo, cosi' che se il nodo viene riavviato ritrova le rilevazioni che aveva
+ * gia'. Tutti i metodi pubblici sono synchronized perche' questa classe viene
+ * usata sia dalla console del nodo sia dal server P2P che risponde alle
+ * richieste degli altri nodi, quindi puo' essere acceduta da piu' thread
+ * contemporaneamente.
  */
 public class LocalStore {
 
-    /**
-     * Prepara l'archivio del nodo (es. una cartella dedicata) e carica le
-     * rilevazioni gia' presenti / pre-allocate.
-     * @param nodeName nome del nodo, usato per la cartella di storage.
-     */
-
-    // Campi raggruppati all'inizio della classe
     private final File dir;
     private final Map<String, String> data = new HashMap<>();
 
+    // Prepara l'archivio del nodo: crea (se non esiste gia') la cartella di storage dedicata a
+    // questo nodo dentro "storage/<nomeNodo>", e carica in memoria tutte le rilevazioni gia'
+    // presenti su disco da un'esecuzione precedente. Rifiuta un nome di nodo nullo o vuoto, perche'
+    // non si potrebbe costruire un percorso valido.
     public LocalStore(String nodeName) throws IOException {
-        // Validazione dell'input per evitare percorsi nulli o vuoti
         if (nodeName == null || nodeName.trim().isEmpty()) {
             throw new IllegalArgumentException("Il nome del nodo non può essere vuoto");
         }
@@ -43,7 +40,6 @@ public class LocalStore {
             }
         }
 
-        // Carica le rilevazioni già presenti
         File[] files = dir.listFiles();
         if (files != null) {
             for (File f : files) {
@@ -55,46 +51,48 @@ public class LocalStore {
         }
     }
 
-    /**
-     * Metodo di supporto privato per leggere il file riga per riga.
-     * Implementato con BufferedReader per rispettare le specifiche di B.
-     */
+    // Legge tutto il contenuto di un file riga per riga e lo ricompone in un'unica stringa,
+    // rimettendo gli a-capo tra una riga e l'altra (tranne che dopo l'ultima), cosi' un contenuto
+    // multi-riga viene restituito esattamente come era stato salvato.
     private String readFile(File file) throws IOException {
         StringBuilder sb = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            String line;
+        try (BufferedReader lettore = new BufferedReader(new FileReader(file))) {
+            String riga;
             boolean first = true;
-            while ((line = reader.readLine()) != null) {
+            while ((riga = lettore.readLine()) != null) {
                 if (!first) {
                     sb.append("\n");
                 }
-                sb.append(line);
+                sb.append(riga);
                 first = false;
             }
         }
         return sb.toString();
     }
 
-    /** @return i nomi di tutte le rilevazioni possedute dal nodo. */
+    // Restituisce i nomi di tutte le rilevazioni possedute dal nodo.
     public synchronized List<String> listNames() {
         return new ArrayList<>(data.keySet());
     }
 
-    /** @return true se il nodo possiede la rilevazione indicata. */
+    // Dice se il nodo possiede la rilevazione indicata (false anche se il nome passato e' null).
     public synchronized boolean has(String rilevazione) {
         if (rilevazione == null) return false;
         return data.containsKey(rilevazione);
     }
 
-    /** @return il contenuto testuale della rilevazione, o null se assente. */
+    // Restituisce il contenuto testuale della rilevazione richiesta, o null se il nodo non la
+    // possiede.
     public synchronized String get(String rilevazione) {
         if (rilevazione == null) return null;
         return data.get(rilevazione);
     }
 
-    /** Aggiunge o aggiorna una rilevazione, persistendola. */
+    // Aggiunge una nuova rilevazione oppure aggiorna il contenuto di una gia' esistente, sia in
+    // memoria sia su disco. Controlla prima che il nome non contenga caratteri pericolosi (come
+    // "/", "\" o "..") che permetterebbero di scrivere fuori dalla cartella del nodo, e che il
+    // contenuto non sia nullo.
     public synchronized void add(String rilevazione, String contenuto) throws IOException {
-       // Protezione da attacchi di Directory Traversal (es. rilevazione = "../file.txt")
         if (rilevazione == null || rilevazione.contains("/") || rilevazione.contains("\\") || rilevazione.equals("..")) {
             throw new IllegalArgumentException("Nome della rilevazione non valido o non sicuro: " + rilevazione);
         }
@@ -102,10 +100,8 @@ public class LocalStore {
             throw new IllegalArgumentException("Il contenuto della rilevazione non può essere nullo");
         }
 
-       // 1. Aggiorna la struttura dati concorrente in memoria
         data.put(rilevazione, contenuto);
 
-        // 2. Persiste il dato su disco (sovrascrive se già presente)
         File fileToSave = new File(dir, rilevazione);
         try (FileWriter writer = new FileWriter(fileToSave)) {
             writer.write(contenuto);
