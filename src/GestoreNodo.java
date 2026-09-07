@@ -12,15 +12,15 @@ import java.util.Set;
 import java.util.UUID;
 
 /*
- * Questa classe gestisce il dialogo dell'aggregatore con UN singolo nodo sensore:
- * ogni volta che un nodo si collega, ServerAggregatore crea un GestoreNodo su un
+ * Questa classe gestisce il dialogo dell'aggregatore con un singolo nodo sensore:
+ * ogni volta che un nodo si collega tramite il socket, ServerAggregatore crea un GestoreNodo su un
  * thread dedicato, cosi' l'aggregatore puo' servire piu' nodi contemporaneamente
  * senza che uno blocchi gli altri. La classe legge i messaggi che arrivano dal
  * nodo, li interpreta secondo il protocollo definito in Protocol.java, esegue
  * l'operazione richiesta sulla tabella condivisa e risponde al nodo.
  */
 public class GestoreNodo implements Runnable {
-
+    
     private final Socket socket;
     private final TabellaRilevazioni tabella;
     private final RegistroDownload registro;
@@ -33,11 +33,11 @@ public class GestoreNodo implements Runnable {
         this.registro = registro;
     }
 
-    // Ciclo di vita della connessione con il nodo: apre i flussi di lettura/scrittura sul socket e
+    // Il metodo run() apre i flussi di lettura/scrittura sul socket e
     // resta in ascolto dei messaggi finche' il nodo non chiude la connessione o chiede
     // esplicitamente di disconnettersi. Ogni messaggio viene passato a gestioneMessaggio(), che si
     // occupa di interpretarlo e rispondere. Qualunque sia il motivo per cui il ciclo finisce
-    // (disconnessione ordinata o caduta improvvisa), il nodo viene sempre marcato offline nel
+    // (disconnessione voluta o caduta improvvisa), il nodo viene sempre marcato offline nel
     // blocco finally, cosi' non resta "fantasma" tra i nodi considerati attivi.
     @Override
     public void run() {
@@ -64,10 +64,19 @@ public class GestoreNodo implements Runnable {
     }
 
     // Interpreta una singola riga ricevuta dal nodo, capisce quale comando rappresenta e lo
-    // esegue chiamando i metodi giusti sulla tabella condivisa (e sul registro, per i download).
+    // esegue chiamando i metodi di TabellaRilevazioni e su RegistroDownload.
     // Restituisce false solo nel caso del comando DISCONNECT, che e' il segnale per uscire dal
     // ciclo di lettura in run(); in tutti gli altri casi restituisce true e la connessione resta
     // aperta per il messaggio successivo.
+    // i tipi di comandi gestiti sono:
+    //- REGISTER: il nodo si registra per la prima volta, viene creato un nuovo InfoPeer 
+    // e gli viene assegnato un id progressivo, e se ci sono rilevazioni da registrare le registra subito.
+    //- ADD: il nodo annuncia di avere una nuova rilevazione, che viene aggiunta alla sua entry in tabella.
+    //- LIST: il nodo chiede la lista di tutte le rilevazioni possedute da tutti i nodi, che viene restituita
+    // come una serie di righe "peerId rilevazioni" seguite da un END.
+    //- DOWNLOAD: il nodo chiede di scaricare una rilevazione.
+    //- DISCONNECT: il nodo chiede di disconnettersi, la connessione viene chiusa e il nodo marcato offline.
+
     private boolean gestioneMessaggio(String riga, BufferedReader lettore, PrintWriter scrittore) throws IOException {
         String[] campi = riga.trim().split("\\s+");
         String comando = campi[0];
@@ -92,13 +101,8 @@ public class GestoreNodo implements Runnable {
             case Protocol.LIST -> {
                 Map<String, List<String>> tutte = tabella.listaRilevazioni();
                 for (Map.Entry<String, List<String>> e : tutte.entrySet()) {
-                    scrittore.println(e.getKey() + " " + String.join(",", e.getValue()));
+                    scrittore.println(e.getKey() + " " + String.join(", ", e.getValue()));
                 }
-                scrittore.println(Protocol.END);
-            }
-
-            case Protocol.NODES -> {
-                scrittore.println(String.join(",", tabella.activeNodes()));
                 scrittore.println(Protocol.END);
             }
 
@@ -123,10 +127,11 @@ public class GestoreNodo implements Runnable {
     // arriva un RETRY (il fornitore proposto non ha funzionato) esclude quel nodo e ne cerca un
     // altro, ripetendo finche' non arriva un DONE (scaricato con successo) oppure finche' non
     // restano piu' fornitori da proporre (UNAVAILABLE). In ogni caso, l'esito finale della sessione
-    // viene sempre registrato nel RegistroDownload.
+    // viene registrato nel RegistroDownload.
     private void gestisciSessioneDownload(String rilevazione, BufferedReader lettore, PrintWriter scrittore) throws IOException {
+        // genera un token casuale per identificare la sessione di download, cos'ì che il richiedente non puo' inviare comandi RETRY/DONE per un download iniziato da un altro nodo.
         String token = UUID.randomUUID().toString();
-
+        // mantiene un insieme di nodi gia' provati e falliti, cosi' da non riproporli in caso di RETRY.
         Set<String> esclusi = new HashSet<>();
 
         InfoPeer fornitore = tabella.selectProvider(rilevazione, esclusi);

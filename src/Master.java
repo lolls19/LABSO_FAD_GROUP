@@ -4,16 +4,18 @@ import java.util.List;
 import java.util.Map;
 
 /*
- * Questa e' la classe di avvio dell'aggregatore: legge la porta da riga di
+ * Questa e' la classe di avvio dell'aggregatore, legge la porta da riga di
  * comando, crea le due risorse condivise di tutto il programma (la tabella delle
- * rilevazioni, che sa chi possiede cosa, e il registro dei download, per lo
- * storico), avvia il server di ascolto su un thread di background e infine si
- * mette a gestire la console interattiva sul thread principale, dove l'utente
- * puo' digitare "listdata" per vedere le rilevazioni disponibili, "log" per lo
- * storico dei download, oppure "quit" per spegnere tutto.
+ * rilevazioni, e il registro dei download), avvia il server di ascolto su un thread
+ * di background e infine si mette a gestire la console interattiva sul thread principale, 
+ * dove l'utente puo' digitare "listdata" per vedere le rilevazioni disponibili, "log" per lo
+ * storico dei download, oppure "quit" per spegnere l'aggregatore.
  */
 public class Master {
 
+    // Il metodo main() legge la porta da riga di comando, crea le due risorse condivise di tutto il programma
+    // (la tabella delle rilevazioni, e il registro dei download), avvia il server di ascolto su un thread
+    // di background e infine richiama il metodo console() per gestire la console interattiva sul thread principale.
     public static void main(String[] args) {
 
         if (args.length != 1) {
@@ -40,11 +42,10 @@ public class Master {
         console(tabella, registro, server);
     }
 
-    // Legge i comandi digitati dall'utente riga per riga e li esegue: "listdata" stampa le
-    // rilevazioni con i relativi possessori, "log" stampa lo storico dei download, "quit" ferma il
-    // server e chiude il programma, una riga vuota non fa nulla e qualunque altra cosa viene
-    // segnalata come comando sconosciuto. Il ciclo va avanti finche' non si digita "quit" o non
-    // viene chiuso il flusso di input della console.
+    // il metodo console() legge i comandi dell'utente dalla console e li interpreta:
+    //  "listdata" stampa le rilevazioni disponibili,
+    //  "log" stampa lo storico dei download, "quit" ferma il server e termina il programma.
+    //  Se l'utente digita un comando sconosciuto stampa un messaggio di errore.
     private static void console(TabellaRilevazioni tabella, RegistroDownload registro, ServerAggregatore server) {
         try (BufferedReader console = new BufferedReader(new InputStreamReader(System.in))) {
             String riga;
@@ -67,28 +68,28 @@ public class Master {
     }
 
     // Stampa l'elenco di tutte le rilevazioni conosciute dall'aggregatore, ciascuna seguita dai
-    // nodi che la possiedono; se non ce n'e' nessuna stampa semplicemente "(nessuna)".
+    // nodi che la possiedono; se non ce n'e' nessuna stampa "(nessuna)".
     private static void stampaRisorse(TabellaRilevazioni tabella) {
-        Map<String, List<String>> tutte = tabella.listaRilevazioni();
+        Map<String, List<String>> TutteRilevazioni = tabella.listaRilevazioni();
         System.out.println("Risorse:");
-        if (tutte.isEmpty()) {
+        if (TutteRilevazioni.isEmpty()) {
             System.out.println("(nessuna)");
             return;
         }
-        for (Map.Entry<String, List<String>> e : tutte.entrySet()) {
-            System.out.println("- " + e.getKey() + ": " + String.join(", ", e.getValue()));
+        for (Map.Entry<String, List<String>> r : TutteRilevazioni.entrySet()) {
+            System.out.println("- " + r.getKey() + ": " + String.join(", ", r.getValue()));
         }
     }
 
     // Stampa lo storico di tutti i download registrati finora (riusciti e falliti); se il registro
-    // e' vuoto stampa semplicemente "(nessuna)".
+    // e' vuoto stampa "(nessuna)".
     private static void stampaLog(RegistroDownload registro) {
         System.out.println("Risorse scaricate:");
-        List<RegistroDownload.Entry> voci = registro.getEntries();
-        if (voci.isEmpty()) {
+        List<RegistroDownload.Entry> ListaDownload = registro.getEntries();
+        if (ListaDownload.isEmpty()) {
             System.out.println("(nessuna)");
             return;
         }
-        for (RegistroDownload.Entry  v : voci) System.out.println(v);
+        for (RegistroDownload.Entry  d : ListaDownload) System.out.println(d);
     }
 }

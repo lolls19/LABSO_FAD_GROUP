@@ -98,7 +98,7 @@ public class Client {
 
                 try {
                     if (trimmed.equals("listdata local")) {
-                        System.out.println("Risorse locali:");
+                        System.out.println("Risorse:");
                         List<String> rilevazioniLocali = store.listNames();
 
                         if (rilevazioniLocali.isEmpty()) {

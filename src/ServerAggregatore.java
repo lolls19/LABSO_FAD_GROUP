@@ -3,7 +3,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 /*
- * Questa classe e' il "portiere" dell'aggregatore: resta in ascolto sulla porta
+ * Questa classe resta in ascolto sulla porta
  * indicata e, ogni volta che un nodo sensore si collega, crea un GestoreNodo
  * dedicato su un thread separato per occuparsi di quella connessione. In questo
  * modo l'aggregatore puo' accettare e servire piu' nodi in parallelo, invece di
@@ -17,7 +17,7 @@ public class ServerAggregatore implements Runnable {
     private final RegistroDownload registro;
     private volatile boolean running = true;
     private ServerSocket serverSocket;
-
+    // metodo costruttore che inizlializza la porta, la tabella delle rilevazioni e il registro dei download.
     public ServerAggregatore(int port, TabellaRilevazioni tabella, RegistroDownload registro) {
         this.port = port;
         this.tabella = tabella;
@@ -48,10 +48,8 @@ public class ServerAggregatore implements Runnable {
         }
     }
 
-    // Ferma il server: imposta running a false e chiude il socket in ascolto, cosi' la accept()
-    // bloccata in run() si sblocca subito con un'eccezione (che verra' ignorata proprio perche'
-    // running e' ormai false) e il ciclo termina. Viene chiamato dalla console quando si digita
-    // "quit".
+    // metodo che ferma il server chiudendo il socket: se il thread e' bloccato in accept() si sblocca e termina.
+    // questo metodo viene chiamato dal master quando l'utente digita "exit" sulla console interattiva.
     public void shutdown() {
         running = false;
         try {
