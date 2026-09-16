@@ -8,12 +8,15 @@ import java.util.Set;
  * informazioni che l'aggregatore deve mantenere per ogni nodo registrato, e fornisce
  * metodi per leggerle e aggiornarle.
  *
- * Dato che piu' thread diversi (uno per ogni connessione gestita dall'aggregatore)
- * possono leggere e modificare lo stato di uno stesso InfoPeer contemporaneamente,
- * il campo "online" e' volatile (basta per un singolo valore letto/scritto da piu'
- * thread) mentre l'insieme delle rilevazioni, che invece subisce piu' operazioni
- * (aggiungi, rimuovi, controlla), e' protetto con synchronized perchè si deve garantire
- * l'accesso esclusivo agli elementi dell'insieme da parte di un solo thread alla volta.
+ * Gli InfoPeer vengono modificati solo attraverso TabellaRilevazioni, che con il suo
+ * lock lettori-scrittori impedisce gia' che una modifica avvenga insieme ad altre
+ * letture o scritture della tabella. La classe pero' e' resa thread-safe anche da sola,
+ * perche' alcuni dati vengono letti anche fuori dal lock della tabella (per esempio
+ * GestoreNodo legge isOnline() dei nodi restituiti da WHOHAS): il campo "online" e'
+ * volatile (basta per un singolo valore letto/scritto da piu' thread) mentre l'insieme
+ * delle rilevazioni, che invece subisce piu' operazioni (aggiungi, rimuovi, controlla),
+ * e' protetto con synchronized, cosi' un solo thread alla volta puo' accedere all'insieme.
+ * I campi peerId, host e port sono final e quindi possono essere letti senza protezione.
  */
 public class InfoPeer {
 
@@ -37,8 +40,8 @@ public class InfoPeer {
     public String getHost()   { return host; }
     public int    getPort()   { return port; }
 
-    // Metodi per leggere e modificare lo stato online/offline del nodo: sono sincronizzati perche' piu' thread
-    // diversi possono leggere e modificare lo stato di uno stesso nodo contemporaneamente.
+    // Metodi per leggere e modificare lo stato online/offline del nodo: non servono synchronized perche' il
+    // campo e' volatile, quindi ogni thread vede sempre l'ultimo valore scritto da un altro thread.
     public boolean isOnline() { return online; }
     public void setOnline(boolean online) { this.online = online; }
 
@@ -51,7 +54,7 @@ public class InfoPeer {
     // metodo per ottenere una copia dell'insieme delle rilevazioni possedute dal nodo.
     // E' sincronizzato perche' piu' thread diversi possono leggere e modificare lo stato
     //  di uno stesso nodo contemporaneamente. Lo restituisce come un nuovo HashSet, cosi' 
-    // chi lo riceve non va a mdofidcare l'hashSet originale, ma lavora su una copia.
+    // chi lo riceve non va a modificare l'HashSet originale, ma lavora su una copia.
     public synchronized Set<String> getSnapshotRilevazione() {
         return new HashSet<>(rilevazioni);
     }

@@ -12,12 +12,17 @@ import java.util.List;
 /*
  * Questa classe gestisce l'unica connessione persistente che il nodo mantiene
  * verso l'aggregatore per tutta la sua vita: registrazione iniziale, notifica di
- * nuove rilevazioni, richiesta dell'elenco delle risorse di rete, e tutti i
- * messaggi legati al download (richiesta, retry, conferma finale). Sia la
- * console interattiva sia il Downloader usano questo stesso oggetto per parlare
- * con l'aggregatore, quindi tutti i metodi sono synchronized: cosi' una
+ * nuove rilevazioni, richiesta degli elenchi (rilevazioni di rete, nodi attivi, nodi
+ * che possiedono una rilevazione), e tutti i messaggi legati al download (richiesta
+ * del token, retry, conferma finale). Sia la console interattiva sia il Downloader
+ * usano questo stesso oggetto per parlare con l'aggregatore, quindi i metodi che
+ * inviano una richiesta e ne leggono la risposta sono synchronized: cosi' una
  * richiesta e la sua risposta viaggiano sempre una alla volta sullo stesso
  * socket, senza che i messaggi di due chiamate diverse si mescolino.
+ * Se l'aggregatore chiude la connessione (per esempio perche' e' stato arrestato),
+ * la lettura della risposta restituisce null: in quel caso viene lanciata una
+ * IOException, cosi' il comando in corso termina con un messaggio di errore invece
+ * di proseguire con una risposta inesistente.
  */
 public class AggregatorLink implements Closeable {
 
@@ -25,6 +30,7 @@ public class AggregatorLink implements Closeable {
     private final BufferedReader lettore;
     private final PrintWriter scrittore;
     private String peerId;
+    private volatile boolean disconnesso = false;
 
     /*
      * Apre la connessione verso l'aggregatore e prepara i flussi di lettura e scrittura testuali
@@ -61,6 +67,35 @@ public class AggregatorLink implements Closeable {
     }
 
     /*
+     * Legge una riga di risposta dall'aggregatore. Se la connessione e' stata chiusa (readLine
+     * restituisce null) lancia una IOException, cosi' chi chiama non deve controllare ogni volta.
+     */
+    private String leggiRisposta() throws IOException {
+        String riga = lettore.readLine();
+        if (riga == null) {
+            throw new IOException("connessione con l'aggregatore persa");
+        }
+        return riga;
+    }
+
+    /*
+     * Invia una richiesta il cui risultato e' un elenco (LIST, NODES, WHOHAS) e restituisce le righe
+     * ricevute cosi' come sono, leggendo finche' non arriva il separatore di fine elenco.
+     */
+    private List<String> richiediElenco(String richiesta) throws IOException {
+        scrittore.println(richiesta);
+        List<String> righe = new ArrayList<>();
+        String riga;
+        while (!(riga = leggiRisposta()).equals(Protocol.END)) {
+            if (riga.startsWith(Protocol.ERR)) {
+                throw new IOException("richiesta rifiutata dall'aggregatore: " + riga);
+            }
+            righe.add(riga);
+        }
+        return righe;
+    }
+
+    /*
      * Registra questo nodo presso l'aggregatore, comunicando il proprio indirizzo, la porta P2P e
      * le rilevazioni possedute all'avvio (oppure "-" se non ne ha nessuna). Controlla che la
      * risposta sia effettivamente un OK con un id valido prima di accettarla, altrimenti solleva
@@ -70,8 +105,8 @@ public class AggregatorLink implements Closeable {
         String ril = (rilevazioni == null || rilevazioni.isEmpty()) ? "-" : String.join(",", rilevazioni);
         scrittore.println(Protocol.REGISTER + " " + peerHost + " " + peerPort + " " + ril);
 
-        String riga = lettore.readLine();
-        if (riga == null || !riga.startsWith(Protocol.OK)) {
+        String riga = leggiRisposta();
+        if (!riga.startsWith(Protocol.OK)) {
             throw new IOException("Errore nella registrazione: " + riga);
         }
 
@@ -86,36 +121,57 @@ public class AggregatorLink implements Closeable {
 
     /*
      * Avvisa l'aggregatore che il nodo ha aggiunto una nuova rilevazione e aspetta la conferma
-     * prima di tornare al chiamante.
+     * prima di tornare al chiamante; se la conferma non e' un OK solleva un'eccezione.
      */
     public synchronized void notifyAdd(String rilevazione) throws IOException {
         scrittore.println(Protocol.ADD + " " + rilevazione);
-        lettore.readLine();
+        String riga = leggiRisposta();
+        if (!riga.startsWith(Protocol.OK)) {
+            throw new IOException("notifica rifiutata dall'aggregatore: " + riga);
+        }
     }
 
     /*
-     * Chiede all'aggregatore l'elenco di tutte le rilevazioni disponibili sulla rete e restituisce
-     * le righe ricevute cosi' come sono (una per rilevazione), leggendo finche' non arriva il
-     * separatore di fine elenco.
+     * Chiede all'aggregatore l'elenco di tutte le rilevazioni disponibili sulla rete; ogni riga
+     * restituita ha la forma "rilevazione peerId, peerId, ...".
      */
     public synchronized List<String> listRemote() throws IOException {
-        scrittore.println(Protocol.LIST);
-        List<String> righe = new ArrayList<>();
-        String riga;
-        while ((riga = lettore.readLine()) != null && !riga.equals(Protocol.END)) {
-            righe.add(riga);
-        }
-        return righe;
+        return richiediElenco(Protocol.LIST);
     }
 
     /*
-     * Comunica all'aggregatore che il nodo si sta disconnettendo in modo ordinato e aspetta la
-     * conferma; qualunque cosa succeda durante lo scambio, chiude comunque il socket alla fine.
+     * Chiede all'aggregatore l'elenco degli altri nodi sensore attivi; ogni riga restituita ha la
+     * forma "peerId host porta".
      */
-    public synchronized void disconnect() throws IOException {
+    public synchronized List<String> listNodes() throws IOException {
+        return richiediElenco(Protocol.NODES);
+    }
+
+    /*
+     * Chiede all'aggregatore quali nodi possiedono la rilevazione indicata; ogni riga restituita ha
+     * la forma "peerId online|offline".
+     */
+    public synchronized List<String> whoHas(String rilevazione) throws IOException {
+        return richiediElenco(Protocol.WHOHAS + " " + rilevazione);
+    }
+
+    /*
+     * Comunica all'aggregatore che il nodo si sta disconnettendo e chiude il socket; viene
+     * eseguito una sola volta anche se chiamato piu' volte. Questo metodo non e' synchronized e non
+     * aspetta la risposta, perche' puo' essere chiamato anche dal thread di chiusura del programma
+     * (Ctrl+C) mentre il thread della console e' fermo dentro un altro metodo di questa classe in
+     * attesa di una risposta: se dovesse aspettare il lock, la chiusura del nodo resterebbe bloccata.
+     * PrintWriter e' gia' sincronizzato al suo interno, quindi la riga DISCONNECT non si mescola con
+     * altri messaggi. Chiudendo il socket, un eventuale thread in attesa di una risposta si sblocca
+     * con un'eccezione.
+     */
+    public void disconnect() throws IOException {
+        if (disconnesso) {
+            return;
+        }
+        disconnesso = true;
         try {
             scrittore.println(Protocol.DISCONNECT);
-            lettore.readLine();
         } finally {
             close();
         }
@@ -125,7 +181,7 @@ public class AggregatorLink implements Closeable {
      * Chiude il socket verso l'aggregatore, se non e' gia' chiuso.
      */
     @Override
-    public synchronized void close() throws IOException {
+    public void close() throws IOException {
         if (!socket.isClosed()) {
             socket.close();
         }
@@ -133,24 +189,28 @@ public class AggregatorLink implements Closeable {
 
     /*
      * I tre metodi seguenti sono usati dal Downloader per portare avanti una sessione di download:
-     * chiedono all'aggregatore chi possiede la rilevazione, segnalano un fornitore che non ha
-     * funzionato per ottenerne un altro, e infine confermano che il download e' andato a buon
-     * fine. In tutti e tre i casi restituiscono semplicemente la riga di risposta dell'aggregatore
-     * cosi' come arriva, lasciando al Downloader il compito di interpretarla.
+     * requestDownload chiede all'aggregatore il token di accesso e il nodo che possiede la
+     * rilevazione, retry segnala il fornitore che non ha funzionato per ottenerne un altro, done
+     * conferma che il download e' andato a buon fine e rilascia il token. I primi due restituiscono
+     * la riga di risposta dell'aggregatore cosi' come arriva, lasciando al Downloader il compito di
+     * interpretarla; done solleva un'eccezione se l'aggregatore non risponde OK.
      */
 
     public synchronized String requestDownload(String rilevazione) throws IOException {
         scrittore.println(Protocol.DOWNLOAD + " " + rilevazione);
-        return lettore.readLine();
+        return leggiRisposta();
     }
 
     public synchronized String retry(String token, String failedPeerId) throws IOException {
         scrittore.println(Protocol.RETRY + " " + token + " " + failedPeerId);
-        return lettore.readLine();
+        return leggiRisposta();
     }
 
     public synchronized void done(String token, String fromPeerId, String rilevazione) throws IOException {
         scrittore.println(Protocol.DONE + " " + token + " " + fromPeerId + " " + rilevazione);
-        lettore.readLine();
+        String riga = leggiRisposta();
+        if (!riga.startsWith(Protocol.OK)) {
+            throw new IOException("conferma del download rifiutata dall'aggregatore: " + riga);
+        }
     }
 }

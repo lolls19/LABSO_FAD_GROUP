@@ -5,14 +5,15 @@ import java.util.Collections;
 import java.util.List;
 
 /*
- * Questa classe tiene lo storico di tutti i download avvenuti nella rete, sia
- * quelli riusciti sia quelli falliti, cosi' che l'aggregatore possa stamparlo su terminale con
+ * Questa classe tiene lo storico di tutte le richieste di download avvenute nella rete, sia
+ * quelle riuscite sia quelle fallite, cosi' che l'aggregatore possa stamparlo su terminale con
  * il comando "log".
  * Il download viene richiesto da un nodo (destinatario) a un altro nodo (sorgente).
- *  Quando una sessione di download termina (con successo o con un fallimento definitivo),
- *  il nodo richiedente chiama il metodo registra() per salvare una nuova voce nello storico, che contiene l'orario,
- *  la rilevazione scaricata, il nodo sorgente e destinatario, e l'esito del download.
- * 
+ *  Durante una sessione di download il GestoreNodo dell'aggregatore chiama il metodo registra() per
+ *  ogni tentativo: quando il download riesce, quando il nodo proposto non fornisce la rilevazione
+ *  (RETRY), quando la rilevazione non e' disponibile su nessun nodo e quando la sessione si interrompe.
+ *  Ogni voce contiene l'orario, la rilevazione, il nodo sorgente e destinatario, e l'esito del download.
+ *
  * Puo' essere usata da piu' thread contemporaneamente (un thread per ogni nodo
  * collegato), quindi sia la scrittura di una nuova voce sia la lettura di tutto
  * lo storico sono protette con synchronized.
@@ -22,9 +23,9 @@ public class RegistroDownload {
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm");
 
     /*
-     * La classe interna Entry rappresenta una singola voce dello storico: 
-     * contiene l'orario, la rilevazione scaricata, il nodo sorgente e destinatario, e l'esito del download.
-     * E' immutabile, quindi non serve sincronalizzarla.
+     * La classe interna Entry rappresenta una singola voce dello storico:
+     * contiene l'orario, la rilevazione, il nodo sorgente e destinatario, e l'esito del download.
+     * E' immutabile, quindi non serve sincronizzarla.
      */
     public static class Entry {
 
@@ -64,12 +65,14 @@ public class RegistroDownload {
             return esitoDownload;
         }
 
-        // metodo toString() per stampare la voce in formato leggibile, 
-        // con l'orario, la rilevazione, il nodo sorgente e destinatario, e l'esito del download.
+        // metodo toString() per stampare la voce nel formato "- HH:mm rilevazione da: sorgente a: destinatario".
+        // Le richieste andate a buon fine vengono stampate esattamente in questo formato, mentre a quelle
+        // fallite viene aggiunto " (fallito)", cosi' dal log si capisce se ogni richiesta e' andata a buon fine.
+        // Se la rilevazione non era disponibile su nessun nodo, al posto del nodo sorgente compare "-".
         // questo metodo viene usato dal comando "log" per stampare tutte le voci dello storico.
         @Override
         public String toString() {
-            String esito = esitoDownload ? "" : " (Download fallito)";
+            String esito = esitoDownload ? "" : " (fallito)";
 
             return String.format("- %s %s da: %s a: %s%s",
                     time.format(formatter), rilevazione, nodoSorgente, nodoDestinatario, esito);

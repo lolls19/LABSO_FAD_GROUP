@@ -12,30 +12,35 @@ import java.net.Socket;
  */
 public class ServerAggregatore implements Runnable {
 
-    private final int port;
     private final TabellaRilevazioni tabella;
     private final RegistroDownload registro;
     private volatile boolean running = true;
-    private ServerSocket serverSocket;
-    // metodo costruttore che inizlializza la porta, la tabella delle rilevazioni e il registro dei download.
-    public ServerAggregatore(int port, TabellaRilevazioni tabella, RegistroDownload registro) {
-        this.port = port;
+    private final ServerSocket serverSocket;
+
+    // metodo costruttore che inizializza la tabella delle rilevazioni e il registro dei download e apre
+    // subito il socket in ascolto sulla porta indicata. Aprirlo qui, e non nel thread di background,
+    // permette al Master di accorgersi immediatamente se la porta e' gia' occupata (o non valida) e
+    // di terminare con un messaggio di errore, invece di restare con una console attiva ma senza
+    // nessun server realmente in ascolto.
+    public ServerAggregatore(int port, TabellaRilevazioni tabella, RegistroDownload registro) throws IOException {
         this.tabella = tabella;
         this.registro = registro;
+        this.serverSocket = new ServerSocket(port);
     }
 
-    // Apre il socket in ascolto sulla porta indicata e resta in un ciclo ad accettare nuove
-    // connessioni finche' running resta true: per ogni nodo che si collega crea un GestoreNodo e
-    // lo avvia su un thread daemon dedicato, cosi' puo' tornare subito ad accettare la connessione
-    // successiva senza aspettare che quella corrente finisca. Se il socket viene chiuso da
-    // shutdown() mentre il server e' ancora "running", l'eccezione che ne deriva viene ignorata
-    // perche' e' l'effetto voluto della chiusura volontaria; altrimenti viene stampato un errore.
+    // Restituisce la porta su cui il server e' in ascolto.
+    public int getPort() {
+        return serverSocket.getLocalPort();
+    }
+
+    // Resta in un ciclo ad accettare nuove connessioni finche' running resta true: per ogni nodo
+    // che si collega crea un GestoreNodo e lo avvia su un thread daemon dedicato, cosi' puo' tornare
+    // subito ad accettare la connessione successiva senza aspettare che quella corrente finisca.
+    // Se il socket viene chiuso da shutdown(), l'eccezione che ne deriva viene ignorata perche' e'
+    // l'effetto voluto della chiusura volontaria; altrimenti viene stampato un errore.
     @Override
     public void run() {
         try {
-            serverSocket = new ServerSocket(port);
-            System.out.println("Aggregatore in ascolto sulla porta " + port);
-
             while (running) {
                 Socket client = serverSocket.accept();
 
@@ -49,11 +54,11 @@ public class ServerAggregatore implements Runnable {
     }
 
     // metodo che ferma il server chiudendo il socket: se il thread e' bloccato in accept() si sblocca e termina.
-    // questo metodo viene chiamato dal master quando l'utente digita "exit" sulla console interattiva.
+    // questo metodo viene chiamato dal Master quando l'utente digita "quit" sulla console interattiva.
     public void shutdown() {
         running = false;
         try {
-            if (serverSocket != null) serverSocket.close();
+            serverSocket.close();
         } catch (IOException ignored) { }
     }
 }

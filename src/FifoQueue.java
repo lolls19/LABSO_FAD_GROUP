@@ -17,15 +17,24 @@ public class FifoQueue {
      * un while (invece di un semplice if) proprio per gestire correttamente sia i risvegli spuri
      * sia il caso in cui, quando ci si risveglia, non sia ancora il proprio turno perche' in coda
      * ci sono altri thread prima di noi.
+     * Il thread non puo' abbandonare la coda, altrimenti il suo biglietto non verrebbe mai
+     * rilasciato e tutti quelli dopo di lui resterebbero bloccati: per questo un'eventuale
+     * interruzione viene solo ricordata e ripristinata quando arriva il turno. Richiamare subito
+     * interrupt() dentro il ciclo farebbe lanciare di nuovo l'eccezione alla wait() successiva, e il
+     * thread girerebbe a vuoto senza mai fermarsi.
      */
     public synchronized void acquisisciLock() {
         int numPersonale = succ++;
+        boolean interrotto = false;
         while (numPersonale != turno) {
             try {
                 wait();
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                interrotto = true;
             }
+        }
+        if (interrotto) {
+            Thread.currentThread().interrupt();
         }
     }
 

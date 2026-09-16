@@ -1,4 +1,5 @@
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map;
@@ -7,15 +8,16 @@ import java.util.Map;
  * Questa e' la classe di avvio dell'aggregatore, legge la porta da riga di
  * comando, crea le due risorse condivise di tutto il programma (la tabella delle
  * rilevazioni, e il registro dei download), avvia il server di ascolto su un thread
- * di background e infine si mette a gestire la console interattiva sul thread principale, 
+ * di background e infine si mette a gestire la console interattiva sul thread principale,
  * dove l'utente puo' digitare "listdata" per vedere le rilevazioni disponibili, "log" per lo
  * storico dei download, oppure "quit" per spegnere l'aggregatore.
  */
 public class Master {
 
     // Il metodo main() legge la porta da riga di comando, crea le due risorse condivise di tutto il programma
-    // (la tabella delle rilevazioni, e il registro dei download), avvia il server di ascolto su un thread
-    // di background e infine richiama il metodo console() per gestire la console interattiva sul thread principale.
+    // (la tabella delle rilevazioni, e il registro dei download), apre il server di ascolto e lo avvia su un
+    // thread di background e infine richiama il metodo console() per gestire la console interattiva sul thread
+    // principale. Se la porta non e' utilizzabile (gia' occupata o fuori intervallo) stampa un errore e termina.
     public static void main(String[] args) {
 
         if (args.length != 1) {
@@ -34,10 +36,18 @@ public class Master {
         TabellaRilevazioni tabella = new TabellaRilevazioni();
         RegistroDownload registro = new RegistroDownload();
 
-        ServerAggregatore server = new ServerAggregatore(port, tabella, registro);
+        ServerAggregatore server;
+        try {
+            server = new ServerAggregatore(port, tabella, registro);
+        } catch (IOException | IllegalArgumentException e) {
+            System.out.println("Errore: impossibile mettersi in ascolto sulla porta " + port + " (" + e.getMessage() + ").");
+            return;
+        }
+
         Thread threadServer = new Thread(server);
         threadServer.setDaemon(true);
         threadServer.start();
+        System.out.println("Aggregatore in ascolto sulla porta " + server.getPort());
 
         console(tabella, registro, server);
     }
@@ -47,6 +57,8 @@ public class Master {
     //  "log" stampa lo storico dei download, "quit" ferma il server e termina il programma.
     //  Se l'utente digita un comando sconosciuto stampa un messaggio di errore.
     private static void console(TabellaRilevazioni tabella, RegistroDownload registro, ServerAggregatore server) {
+        System.out.println("Comandi disponibili: listdata | log | quit");
+        System.out.print("> ");
         try (BufferedReader console = new BufferedReader(new InputStreamReader(System.in))) {
             String riga;
             while ((riga = console.readLine()) != null) {
@@ -61,6 +73,7 @@ public class Master {
                     case ""         -> { }
                     default         -> System.out.println("Comando sconosciuto.");
                 }
+                System.out.print("> ");
             }
         } catch (Exception e) {
             System.err.println("Errore console: " + e.getMessage());
@@ -81,8 +94,8 @@ public class Master {
         }
     }
 
-    // Stampa lo storico di tutti i download registrati finora (riusciti e falliti); se il registro
-    // e' vuoto stampa "(nessuna)".
+    // Stampa lo storico di tutte le richieste di download registrate finora, compresi i singoli
+    // tentativi falliti, con l'esito di ciascuna; se il registro e' vuoto stampa "(nessuna)".
     private static void stampaLog(RegistroDownload registro) {
         System.out.println("Risorse scaricate:");
         List<RegistroDownload.Entry> ListaDownload = registro.getEntries();

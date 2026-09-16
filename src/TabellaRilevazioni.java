@@ -1,9 +1,9 @@
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /*
  * Questa e' la tabella condivisa dell'aggregatore: tiene traccia di tutti i nodi
@@ -16,15 +16,22 @@ import java.util.Set;
  * rilevazioni) possono avvenire insieme senza problemi, mentre un'operazione di
  * scrittura (per esempio registrare un nuovo nodo) ha bisogno di accesso
  * esclusivo, cioe' deve aspettare che tutte le letture in corso finiscano e deve
- * bloccare quelle nuove finche' non ha finito. 
+ * bloccare quelle nuove finche' non ha finito. In questo modo ogni richiesta che
+ * arriva all'aggregatore mentre la tabella viene aggiornata resta in attesa finche'
+ * l'aggiornamento non e' completato.
+ * Il lock da' la precedenza agli scrittori: appena uno scrittore si mette in attesa,
+ * i nuovi lettori non possono piu' entrare, cosi' un flusso continuo di letture non
+ * puo' rimandare all'infinito un aggiornamento della tabella (starvation degli scrittori).
  */
 public class TabellaRilevazioni {
     // Mappa "peerId -> InfoPeer" che contiene tutti i nodi registrati, sia online sia offline.
-    private final Map<String, InfoPeer> peers = new HashMap<>();
+    // E' una LinkedHashMap cosi' i nodi vengono sempre scorsi nell'ordine di registrazione.
+    private final Map<String, InfoPeer> peers = new LinkedHashMap<>();
 
     private int peerCont = 0;
 
     private int lettori = 0;
+    private int scrittoriInAttesa = 0;
     private boolean scrittura = false;
  // metodo costruttore che inizializza il contatore dei peer a 0, quindi la tabella e' vuota all'inizio.
     public TabellaRilevazioni() {
@@ -33,23 +40,30 @@ public class TabellaRilevazioni {
 
     /*Implementazione del lock lettori-scrittori */
 
-    // Fa entrare un lettore: puo' procedere solo se non c'e' uno scrittore in corso,
-    //  altrimenti resta in attesa. Una volta ottenuto il turno, puo' leggere e anche se altri lettori possono entrare, 
-    // finche' non chiama endRead().
+    // Fa entrare un lettore: puo' procedere solo se non c'e' uno scrittore in corso e nessuno scrittore
+    // in attesa, altrimenti resta in attesa. Una volta ottenuto il turno puo' leggere insieme ad
+    // altri lettori, finche' non chiama endRead().
+    // Se il thread viene interrotto mentre aspetta, l'interruzione viene ricordata e ripristinata solo
+    // dopo aver ottenuto il turno: richiamare subito interrupt() dentro il ciclo farebbe lanciare di
+    // nuovo l'eccezione alla wait() successiva, e il thread girerebbe a vuoto senza mai fermarsi.
     private synchronized void startRead() {
-        while (scrittura) {
+        boolean interrotto = false;
+        while (scrittura || scrittoriInAttesa > 0) {
             try {
                 wait();
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                interrotto = true;
             }
         }
         lettori++;
+        if (interrotto) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // metodo che segna la fine della lettura da parte di un thread: decrementa il contatore dei lettori e,
-    //  se non ce ne sono piu', sveglia tutti i thread in attesa ( che  saranno solo scirttori perchè i lettori fino a quel momento potevano
-    //  entrare senza problemi).
+    // se non ce ne sono piu', sveglia tutti i thread in attesa (gli scrittori che aspettavano la fine
+    // delle letture in corso).
     private synchronized void endRead() {
         lettori--;
         if (lettori == 0) {
@@ -57,18 +71,25 @@ public class TabellaRilevazioni {
         }
     }
 
-    // metodo che fa entrare uno scrittore: puo' procedere solo se non c'e' nessun lettore in corso e nessun altro scrittore,
-    //  altrimenti resta in attesa. Una volta ottenuto il turno, puo' scrivere e nessun altro lettore o scrittore puo' entrare 
-    // finche' non chiama endWrite().
+    // metodo che fa entrare uno scrittore: si registra come scrittore in attesa (bloccando l'ingresso di
+    // nuovi lettori) e puo' procedere solo quando non c'e' nessun lettore in corso e nessun altro scrittore.
+    // Una volta ottenuto il turno, puo' scrivere e nessun altro lettore o scrittore puo' entrare
+    // finche' non chiama endWrite(). L'interruzione viene gestita come in startRead().
     private synchronized void startWrite() {
+        boolean interrotto = false;
+        scrittoriInAttesa++;
         while (scrittura || lettori > 0) {
             try {
                 wait();
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                interrotto = true;
             }
         }
+        scrittoriInAttesa--;
         scrittura = true;
+        if (interrotto) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // Segnala che la scrittura e' terminata e sveglia tutti i thread in attesa, sia i lettori sia
@@ -119,7 +140,8 @@ public class TabellaRilevazioni {
 
     // Toglie una rilevazione da un nodo: viene usato quando un download fallisce perche' il nodo
     // scelto non possedeva piu' davvero quella rilevazione, cosi' che non venga riproposto in
-    // futuro per la stessa risorsa.
+    // futuro per la stessa risorsa, e quando un nodo chiede di scaricare una rilevazione che quindi
+    // non possiede in locale.
     // dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
     public void removeEntryRilevazione(String peerId, String rilevazione) {
         startWrite();
@@ -149,14 +171,15 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Costruisce una mappa dove per ogni rilevazione è collegata alla lista dei nodi che la possiedono, usata dai comandi
-    // listdata/LIST. Non filtra i nodi offline: anche dopo un quit, le rilevazioni di quel
-    // nodo restano visibili in questo elenco (anche se poi non sono davvero scaricabili).
-    // dato che legge in tabella utilizza i metodi startRead() e endRead() per garantire l'accesso esclusivo alla tabella durante la lettura.
+    // Costruisce una mappa dove ogni rilevazione e' collegata alla lista dei nodi che la possiedono, usata dai comandi
+    // listdata/LIST. Le rilevazioni sono ordinate per nome (TreeMap). Non filtra i nodi offline: anche dopo un quit,
+    // le rilevazioni di quel nodo restano visibili in questo elenco (anche se poi non sono davvero scaricabili).
+    // dato che legge la tabella utilizza i metodi startRead() e endRead(): altri lettori possono leggere insieme,
+    // ma nessuno scrittore puo' modificare la tabella finche' la lettura non e' finita.
     public Map<String, List<String>> listaRilevazioni() {
         startRead();
         try {
-            Map<String, List<String>> risultato = new LinkedHashMap<>();
+            Map<String, List<String>> risultato = new TreeMap<>();
             for (InfoPeer p : peers.values()) {
                 for (String r : p.getSnapshotRilevazione()) {
                     if (!risultato.containsKey(r)) {
@@ -171,16 +194,17 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Restituisce la lista degli id dei nodi attualmente online, cioe' quelli che si possono
-    // ancora considerare raggiungibili per un download.
-    // dato che legge in tabella utilizza i metodi startRead() e endRead() per garantire l'accesso esclusivo alla tabella durante la lettura.
-    public List<String> activeNodes() {
+    // Restituisce i nodi attualmente online, cioe' quelli che si possono ancora considerare
+    // raggiungibili, escluso il nodo indicato (il nodo che ha fatto la richiesta, che vuole
+    // conoscere gli altri nodi attivi). Usato dal comando NODES.
+    // dato che legge la tabella utilizza i metodi startRead() e endRead().
+    public List<InfoPeer> activeNodes(String escluso) {
         startRead();
         try {
-            List<String> nodiOnline = new ArrayList<>();
+            List<InfoPeer> nodiOnline = new ArrayList<>();
             for (InfoPeer p : peers.values()) {
-                if (p.isOnline()) {
-                    nodiOnline.add(p.getPeerId());
+                if (p.isOnline() && !p.getPeerId().equals(escluso)) {
+                    nodiOnline.add(p);
                 }
             }
             return nodiOnline;
@@ -189,11 +213,29 @@ public class TabellaRilevazioni {
         }
     }
 
+    // Restituisce tutti i nodi che secondo la tabella possiedono la rilevazione indicata, sia online
+    // sia offline (il chiamante puo' distinguerli con isOnline()). Usato dal comando WHOHAS.
+    // dato che legge la tabella utilizza i metodi startRead() e endRead().
+    public List<InfoPeer> nodiConRilevazione(String rilevazione) {
+        startRead();
+        try {
+            List<InfoPeer> possessori = new ArrayList<>();
+            for (InfoPeer p : peers.values()) {
+                if (p.hasRilevazione(rilevazione)) {
+                    possessori.add(p);
+                }
+            }
+            return possessori;
+        } finally {
+            endRead();
+        }
+    }
+
     // Cerca un nodo online che possieda la rilevazione richiesta e che non sia gia' tra quelli
-    // esclusi (cioe' gia' provati senza successo). Restituisce il primo che trova, oppure null se
-    // nessun nodo puo' fornire quella rilevazione: e' cosi' che l'aggregatore decide a chi
-    // proporre un download e come gestisce i tentativi falliti (RETRY).
-    // dato che legge in tabella utilizza i metodi startRead() e endRead() per garantire l'accesso esclusivo alla tabella durante la lettura.
+    // esclusi (cioe' gia' provati senza successo, oppure il richiedente stesso). Restituisce il primo
+    // che trova, oppure null se nessun nodo puo' fornire quella rilevazione: e' cosi' che l'aggregatore
+    // decide a chi proporre un download e come gestisce i tentativi falliti (RETRY).
+    // dato che legge la tabella utilizza i metodi startRead() e endRead().
     public InfoPeer selectProvider(String rilevazione, Set<String> excluded) {
         startRead();
         try {

@@ -10,12 +10,13 @@ import java.util.Base64;
 /*
  * Questa classe implementa il comando "download <rilevazione>" lato nodo
  * richiedente, seguendo il protocollo di download robusto: prima chiede
- * all'aggregatore un token e il nodo che dovrebbe possedere la rilevazione, poi
- * si collega direttamente a quel nodo per scaricarla via peer-to-peer. Se il
- * nodo scelto non ce l'ha piu' (risposta NOTFOUND), lo comunica all'aggregatore
- * con un RETRY e ne ottiene un altro da provare, e cosi' via finche' non riesce a
- * scaricare la rilevazione (DONE) oppure l'aggregatore esaurisce i nodi da
- * proporre (UNAVAILABLE, cioe' non disponibile sulla rete).
+ * all'aggregatore il token di accesso e il nodo che dovrebbe possedere la
+ * rilevazione, poi si collega direttamente a quel nodo per scaricarla via
+ * peer-to-peer. Se il nodo scelto non ce l'ha piu' (risposta NOTFOUND) o non e'
+ * raggiungibile, lo comunica all'aggregatore con un RETRY e ne ottiene un altro da
+ * provare, e cosi' via finche' non riesce a scaricare la rilevazione (DONE, che
+ * rilascia anche il token) oppure l'aggregatore esaurisce i nodi da proporre
+ * (UNAVAILABLE, cioe' non disponibile sulla rete).
  */
 public class Downloader {
 
@@ -29,11 +30,13 @@ public class Downloader {
 
     /*
      * Scarica una rilevazione dalla rete: se il nodo la possiede gia' localmente non fa nulla e lo
-     * segnala. Altrimenti chiede all'aggregatore un primo candidato e prova a contattarlo
+     * segnala. Altrimenti chiede all'aggregatore il token e un primo candidato e prova a contattarlo
      * direttamente; se il candidato non ha piu' la rilevazione, avvisa l'aggregatore con un RETRY
-     * e riprova con il nodo successivo che viene proposto, ripetendo il ciclo finche' non riesce a
-     * scaricarla (caso in cui salva il contenuto, notifica il DONE all'aggregatore ed esce) oppure
-     * finche' l'aggregatore risponde che la rilevazione non e' disponibile su nessun nodo.
+     * (ripresentando il token) e riprova con il nodo successivo che viene proposto, ripetendo il
+     * ciclo finche' non riesce a scaricarla (caso in cui salva il contenuto, invia il DONE che
+     * rilascia il token ed esce) oppure finche' l'aggregatore risponde che la rilevazione non e'
+     * disponibile su nessun nodo. Se la risposta dell'aggregatore non e' quella attesa (per esempio
+     * ERR) solleva una IOException.
      */
     public void download(String rilevazione) throws IOException {
         if (store.has(rilevazione)) {
@@ -50,6 +53,9 @@ public class Downloader {
             }
 
             String[] campi = riga.split("\\s+");
+            if (!campi[0].equals(Protocol.PEER) || campi.length < 5) {
+                throw new IOException("risposta non valida dall'aggregatore: " + riga);
+            }
             String token = campi[1], providerId = campi[2], host = campi[3];
             int port = Integer.parseInt(campi[4]);
 
@@ -61,6 +67,7 @@ public class Downloader {
                 System.out.println("Rilevazione '" + rilevazione + "' scaricata da " + providerId + ".");
                 return;
             } else {
+                System.out.println("Il nodo " + providerId + " non ha fornito la rilevazione, richiedo un altro nodo all'aggregatore...");
                 riga = aggregatore.retry(token, providerId);
             }
         }
@@ -69,10 +76,13 @@ public class Downloader {
     /*
      * Si collega direttamente al nodo indicato (senza passare dall'aggregatore) e gli chiede la
      * rilevazione con un GET. Se il nodo la possiede risponde OK seguito dal contenuto codificato
-     * in Base64, che qui viene decodificato e restituito. Se il nodo non la possiede piu', oppure
-     * se non e' proprio raggiungibile (offline, connessione rifiutata...), il metodo restituisce
-     * null in entrambi i casi: dal punto di vista di chi chiama non fa differenza, serve comunque
-     * solo chiedere un altro candidato all'aggregatore, senza far fallire tutto il download.
+     * in Base64, che qui viene decodificato e restituito. Se il nodo non la possiede piu', se non
+     * e' proprio raggiungibile (offline, connessione rifiutata...) oppure se invia un contenuto non
+     * decodificabile, il metodo restituisce null in tutti i casi: dal punto di vista di chi chiama
+     * non fa differenza, serve comunque solo chiedere un altro candidato all'aggregatore, senza far
+     * fallire tutto il download.
+     * Se il nodo sta gia' servendo altre richieste, la risposta arriva solo quando e' il turno di
+     * questa richiesta: il metodo resta in attesa, senza terminare con un errore.
      */
     private String fetchFromPeer(String host, int port, String rilevazione) {
         try (Socket s = new Socket(host, port);
@@ -90,7 +100,7 @@ public class Downloader {
             }
             return null;
 
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
             return null;
         }
     }
