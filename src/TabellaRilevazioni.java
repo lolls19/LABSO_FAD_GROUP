@@ -16,22 +16,16 @@ import java.util.TreeMap;
  * rilevazioni) possono avvenire insieme senza problemi, mentre un'operazione di
  * scrittura (per esempio registrare un nuovo nodo) ha bisogno di accesso
  * esclusivo, cioe' deve aspettare che tutte le letture in corso finiscano e deve
- * bloccare quelle nuove finche' non ha finito. In questo modo ogni richiesta che
- * arriva all'aggregatore mentre la tabella viene aggiornata resta in attesa finche'
- * l'aggiornamento non e' completato.
- * Il lock da' la precedenza agli scrittori: appena uno scrittore si mette in attesa,
- * i nuovi lettori non possono piu' entrare, cosi' un flusso continuo di letture non
- * puo' rimandare all'infinito un aggiornamento della tabella (starvation degli scrittori).
+ * bloccare quelle nuove finche' non ha finito.
  */
 public class TabellaRilevazioni {
-    // Mappa "peerId -> InfoPeer" che contiene tutti i nodi registrati, sia online sia offline.
+    // Mappa "peerId - InfoPeer" che contiene tutti i nodi registrati, sia online sia offline.
     // E' una LinkedHashMap cosi' i nodi vengono sempre scorsi nell'ordine di registrazione.
     private final Map<String, InfoPeer> peers = new LinkedHashMap<>();
 
     private int peerCont = 0;
 
     private int lettori = 0;
-    private int scrittoriInAttesa = 0;
     private boolean scrittura = false;
  // metodo costruttore che inizializza il contatore dei peer a 0, quindi la tabella e' vuota all'inizio.
     public TabellaRilevazioni() {
@@ -40,30 +34,23 @@ public class TabellaRilevazioni {
 
     /*Implementazione del lock lettori-scrittori */
 
-    // Fa entrare un lettore: puo' procedere solo se non c'e' uno scrittore in corso e nessuno scrittore
-    // in attesa, altrimenti resta in attesa. Una volta ottenuto il turno puo' leggere insieme ad
-    // altri lettori, finche' non chiama endRead().
-    // Se il thread viene interrotto mentre aspetta, l'interruzione viene ricordata e ripristinata solo
-    // dopo aver ottenuto il turno: richiamare subito interrupt() dentro il ciclo farebbe lanciare di
-    // nuovo l'eccezione alla wait() successiva, e il thread girerebbe a vuoto senza mai fermarsi.
+    // Fa entrare un lettore: puo' procedere solo se non c'e' uno scrittore in corso,
+    //  altrimenti resta in attesa. Una volta ottenuto il turno, puo' leggere e anche se altri lettori possono entrare,
+    // finche' non chiama endRead().
     private synchronized void startRead() {
-        boolean interrotto = false;
-        while (scrittura || scrittoriInAttesa > 0) {
+        while (scrittura) {
             try {
                 wait();
             } catch (InterruptedException e) {
-                interrotto = true;
+                Thread.currentThread().interrupt();
             }
         }
         lettori++;
-        if (interrotto) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     // metodo che segna la fine della lettura da parte di un thread: decrementa il contatore dei lettori e,
-    // se non ce ne sono piu', sveglia tutti i thread in attesa (gli scrittori che aspettavano la fine
-    // delle letture in corso).
+    //  se non ce ne sono piu', sveglia tutti i thread in attesa ( che  saranno solo scirttori perchè i lettori fino a quel momento potevano
+    //  entrare senza problemi).
     private synchronized void endRead() {
         lettori--;
         if (lettori == 0) {
@@ -71,25 +58,18 @@ public class TabellaRilevazioni {
         }
     }
 
-    // metodo che fa entrare uno scrittore: si registra come scrittore in attesa (bloccando l'ingresso di
-    // nuovi lettori) e puo' procedere solo quando non c'e' nessun lettore in corso e nessun altro scrittore.
-    // Una volta ottenuto il turno, puo' scrivere e nessun altro lettore o scrittore puo' entrare
-    // finche' non chiama endWrite(). L'interruzione viene gestita come in startRead().
+    // metodo che fa entrare uno scrittore: puo' procedere solo se non c'e' nessun lettore in corso e nessun altro scrittore,
+    //  altrimenti resta in attesa. Una volta ottenuto il turno, puo' scrivere e nessun altro lettore o scrittore puo' entrare
+    // finche' non chiama endWrite().
     private synchronized void startWrite() {
-        boolean interrotto = false;
-        scrittoriInAttesa++;
         while (scrittura || lettori > 0) {
             try {
                 wait();
             } catch (InterruptedException e) {
-                interrotto = true;
+                Thread.currentThread().interrupt();
             }
         }
-        scrittoriInAttesa--;
         scrittura = true;
-        if (interrotto) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     // Segnala che la scrittura e' terminata e sveglia tutti i thread in attesa, sia i lettori sia
