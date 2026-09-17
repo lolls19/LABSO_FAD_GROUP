@@ -6,21 +6,23 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /*
- * Questa e' la classe di avvio del nodo sensore: si lancia passando indirizzo e
- * porta dell'aggregatore (es. "java Client 127.0.0.1 9000"), ed eventualmente un
- * terzo argomento con il nome del nodo, usato come cartella di storage; se non
- * viene indicato ne genera uno automaticamente. Il metodo main mette in piedi
- * tutte le parti del nodo: l'archivio locale delle rilevazioni, il server P2P che
- * risponde alle richieste degli altri nodi (su un thread di background), la
- * connessione persistente con l'aggregatore, il componente che gestisce i
- * download, e infine passa il controllo alla console interattiva sul thread
- * principale, cosi' l'utente puo' usare il nodo mentre questo continua a
- * funzionare in rete.
- */
+Questa e' la classe di avvio del nodo sensore: si lancia passando indirizzo e
+porta dell'aggregatore (es. "java Client 127.0.0.1 9000"), ed eventualmente un
+terzo argomento con il nome del nodo, usato come cartella di storage; se non
+viene indicato ne genera uno automaticamente. Il metodo main mette in piedi
+tutte le parti del nodo: l'archivio locale delle rilevazioni, il server P2P che
+risponde alle richieste degli altri nodi (su un thread di background), la
+connessione persistente con l'aggregatore, il componente che gestisce i
+download, e infine passa il controllo alla console interattiva sul thread
+principale, cosi' l'utente puo' usare il nodo mentre questo continua a
+funzionare in rete.
+*/
 public class Client {
 
-    // Diventa true alla prima chiamata di shutdownNode(), cosi' la chiusura del nodo viene eseguita
-    // una sola volta anche se viene richiesta sia dalla console sia dal thread di chiusura (Ctrl+C).
+    /*
+    Diventa true alla prima chiamata di shutdownNode(), cosi' la chiusura del nodo viene eseguita
+    una sola volta anche se viene richiesta sia dalla console sia dal thread di chiusura (Ctrl+C).
+    */
     private static final AtomicBoolean arrestato = new AtomicBoolean(false);
 
     public static void main(String[] args) {
@@ -62,9 +64,11 @@ public class Client {
                 return;
             }
 
-            // Se il programma viene chiuso senza usare "quit" (per esempio con Ctrl+C), la JVM esegue
-            // questo thread prima di terminare: cosi' il nodo comunica comunque all'aggregatore che
-            // si sta disconnettendo dalla rete.
+            /*
+            Se il programma viene chiuso senza usare "quit" (per esempio con Ctrl+C), la JVM esegue
+            questo thread prima di terminare: cosi' il nodo comunica comunque all'aggregatore che
+            si sta disconnettendo dalla rete.
+            */
             Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdownNode(peerServer, aggregatore)));
 
             String peerId = aggregatore.register(
@@ -83,20 +87,20 @@ public class Client {
     }
 
     /*
-     * Legge i comandi digitati dall'utente e li esegue:
-     *  - "listdata local" mostra le rilevazioni possedute dal nodo;
-     *  - "listdata remote" chiede all'aggregatore tutte le rilevazioni della rete con i nodi che le possiedono;
-     *  - "listnodes" chiede all'aggregatore l'elenco degli altri nodi sensore attivi;
-     *  - "whohas <nome>" chiede all'aggregatore quali nodi possiedono una determinata rilevazione;
-     *  - "add <nome> <contenuto>" salva una nuova rilevazione e la notifica all'aggregatore;
-     *  - "download <nome>" scarica la rilevazione da un altro nodo scelto dall'aggregatore;
-     *  - "quit" chiude il programma.
-     * Le righe vuote vengono ignorate e qualunque altro comando viene segnalato come sconosciuto.
-     * Gli errori di un singolo comando (connessione con l'aggregatore persa, nome di rilevazione
-     * non valido...) vengono stampati senza chiudere il nodo, che continua a servire gli altri nodi.
-     * Qualunque sia il modo in cui si esce dal ciclo (quit oppure chiusura imprevista dell'input), il
-     * blocco finally si occupa di spegnere il nodo in modo pulito tramite shutdownNode().
-     */
+    Legge i comandi digitati dall'utente e li esegue:
+     - "listdata local" mostra le rilevazioni possedute dal nodo;
+     - "listdata remote" chiede all'aggregatore tutte le rilevazioni della rete con i nodi che le possiedono;
+     - "listnodes" chiede all'aggregatore l'elenco degli altri nodi sensore attivi;
+     - "whohas <nome>" chiede all'aggregatore quali nodi possiedono una determinata rilevazione;
+     - "add <nome> <contenuto>" salva una nuova rilevazione e la notifica all'aggregatore;
+     - "download <nome>" scarica la rilevazione da un altro nodo scelto dall'aggregatore;
+     - "quit" chiude il programma.
+    Le righe vuote vengono ignorate e qualunque altro comando viene segnalato come sconosciuto.
+    Gli errori di un singolo comando (connessione con l'aggregatore persa, nome di rilevazione
+    non valido...) vengono stampati senza chiudere il nodo, che continua a servire gli altri nodi.
+    Qualunque sia il modo in cui si esce dal ciclo (quit oppure chiusura imprevista dell'input), il
+    blocco finally si occupa di spegnere il nodo in modo pulito tramite shutdownNode().
+    */
     private static void console(LocalStore store, AggregatorLink aggregatore,
                                 Downloader downloader, PeerServer peerServer) {
         System.out.println("\n--- Console Nodo Avviata ---");
@@ -220,12 +224,12 @@ public class Client {
     }
 
     /*
-     * Chiude in modo ordinato tutte le risorse aperte dal nodo: ferma il server P2P e comunica
-     * all'aggregatore che si sta disconnettendo, ignorando eventuali errori nel farlo (tanto il nodo
-     * sta comunque per chiudersi). Viene chiamato sia quando l'utente digita "quit" o l'input della
-     * console si chiude, sia dal thread di chiusura della JVM (Ctrl+C); grazie ad "arrestato" le
-     * operazioni vengono eseguite una sola volta.
-     */
+    Chiude in modo ordinato tutte le risorse aperte dal nodo: ferma il server P2P e comunica
+    all'aggregatore che si sta disconnettendo, ignorando eventuali errori nel farlo (tanto il nodo
+    sta comunque per chiudersi). Viene chiamato sia quando l'utente digita "quit" o l'input della
+    console si chiude, sia dal thread di chiusura della JVM (Ctrl+C); grazie ad "arrestato" le
+    operazioni vengono eseguite una sola volta.
+    */
     private static void shutdownNode(PeerServer peerServer, AggregatorLink aggregatore) {
         if (!arrestato.compareAndSet(false, true)) {
             return;

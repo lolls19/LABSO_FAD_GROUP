@@ -5,19 +5,21 @@ import java.util.List;
 import java.util.Map;
 
 /*
- * Questa e' la classe di avvio dell'aggregatore, legge la porta da riga di
- * comando, crea le due risorse condivise di tutto il programma (la tabella delle
- * rilevazioni, e il registro dei download), avvia il server di ascolto su un thread
- * di background e infine si mette a gestire la console interattiva sul thread principale,
- * dove l'utente puo' digitare "listdata" per vedere le rilevazioni disponibili, "log" per lo
- * storico dei download, oppure "quit" per spegnere l'aggregatore.
- */
+Questa e' la classe di avvio dell'aggregatore, legge la porta da riga di
+comando, crea le due risorse condivise di tutto il programma (la tabella delle
+rilevazioni, e il registro dei download), avvia il server di ascolto su un thread
+di background e infine si mette a gestire la console interattiva sul thread principale,
+dove l'utente puo' digitare "listdata" per vedere le rilevazioni disponibili, "log" per lo
+storico dei download, oppure "quit" per spegnere l'aggregatore.
+*/
 public class Master {
 
-    // Il metodo main() legge la porta da riga di comando, crea le due risorse condivise di tutto il programma
-    // (la tabella delle rilevazioni, e il registro dei download), apre il server di ascolto e lo avvia su un
-    // thread di background e infine richiama il metodo console() per gestire la console interattiva sul thread
-    // principale. Se la porta non e' utilizzabile (gia' occupata o fuori intervallo) stampa un errore e termina.
+    /*
+    Il metodo main() legge la porta da riga di comando, crea le due risorse condivise di tutto il programma
+    (la tabella delle rilevazioni, e il registro dei download), apre il server di ascolto e lo avvia su un
+    thread di background e infine richiama il metodo console() per gestire la console interattiva sul thread
+    principale. Se la porta non e' utilizzabile (gia' occupata o fuori intervallo) stampa un errore e termina.
+    */
     public static void main(String[] args) {
 
         if (args.length != 1) {
@@ -52,10 +54,12 @@ public class Master {
         console(tabella, registro, server);
     }
 
-    // il metodo console() legge i comandi dell'utente dalla console e li interpreta:
-    //  "listdata" stampa le rilevazioni disponibili,
-    //  "log" stampa lo storico dei download, "quit" ferma il server e termina il programma.
-    //  Se l'utente digita un comando sconosciuto stampa un messaggio di errore.
+    /*
+    il metodo console() legge i comandi dell'utente dalla console e li interpreta:
+    "listdata" stampa le rilevazioni disponibili,
+    "log" stampa lo storico dei download, "quit" ferma il server e termina il programma.
+    Se l'utente digita un comando sconosciuto stampa un messaggio di errore.
+    */
     private static void console(TabellaRilevazioni tabella, RegistroDownload registro, ServerAggregatore server) {
         System.out.println("Comandi disponibili: listdata | log | quit");
         System.out.print("> ");
@@ -80,8 +84,10 @@ public class Master {
         }
     }
 
-    // Stampa l'elenco di tutte le rilevazioni conosciute dall'aggregatore, ciascuna seguita dai
-    // nodi che la possiedono; se non ce n'e' nessuna stampa "(nessuna)".
+    /*
+    Stampa l'elenco di tutte le rilevazioni conosciute dall'aggregatore, ciascuna seguita dai
+    nodi che la possiedono; se non ce n'e' nessuna stampa "(nessuna)".
+    */
     private static void stampaRisorse(TabellaRilevazioni tabella) {
         Map<String, List<String>> TutteRilevazioni = tabella.listaRilevazioni();
         System.out.println("Risorse:");
@@ -94,8 +100,10 @@ public class Master {
         }
     }
 
-    // Stampa lo storico di tutte le richieste di download registrate finora, compresi i singoli
-    // tentativi falliti, con l'esito di ciascuna; se il registro e' vuoto stampa "(nessuna)".
+    /*
+    Stampa lo storico di tutte le richieste di download registrate finora, compresi i singoli
+    tentativi falliti, con l'esito di ciascuna; se il registro e' vuoto stampa "(nessuna)".
+    */
     private static void stampaLog(RegistroDownload registro) {
         System.out.println("Risorse scaricate:");
         List<RegistroDownload.Entry> ListaDownload = registro.getEntries();

@@ -6,37 +6,41 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /*
- * Questa e' la tabella condivisa dell'aggregatore: tiene traccia di tutti i nodi
- * sensore che si sono mai registrati (con il loro InfoPeer) e, di conseguenza, di
- * chi possiede quali rilevazioni. Viene letta e modificata contemporaneamente da tutti
- * i thread che gestiscono le connessioni dei vari nodi (un thread per nodo).
- *
- * Per gestire questo accesso concorrente la classe implementa un lock
- * lettori-scrittori: piu' operazioni di sola lettura (per esempio elencare le
- * rilevazioni) possono avvenire insieme senza problemi, mentre un'operazione di
- * scrittura (per esempio registrare un nuovo nodo) ha bisogno di accesso
- * esclusivo, cioe' deve aspettare che tutte le letture in corso finiscano e deve
- * bloccare quelle nuove finche' non ha finito.
- */
+Questa e' la tabella condivisa dell'aggregatore: tiene traccia di tutti i nodi
+sensore che si sono mai registrati (con il loro InfoPeer) e, di conseguenza, di
+chi possiede quali rilevazioni. Viene letta e modificata contemporaneamente da tutti
+i thread che gestiscono le connessioni dei vari nodi (un thread per nodo).
+
+Per gestire questo accesso concorrente la classe implementa un lock
+lettori-scrittori: piu' operazioni di sola lettura (per esempio elencare le
+rilevazioni) possono avvenire insieme senza problemi, mentre un'operazione di
+scrittura (per esempio registrare un nuovo nodo) ha bisogno di accesso
+esclusivo, cioe' deve aspettare che tutte le letture in corso finiscano e deve
+bloccare quelle nuove finche' non ha finito.
+*/
 public class TabellaRilevazioni {
-    // Mappa "peerId - InfoPeer" che contiene tutti i nodi registrati, sia online sia offline.
-    // E' una LinkedHashMap cosi' i nodi vengono sempre scorsi nell'ordine di registrazione.
+    /*
+    Mappa "peerId - InfoPeer" che contiene tutti i nodi registrati, sia online sia offline.
+    E' una LinkedHashMap cosi' i nodi vengono sempre scorsi nell'ordine di registrazione.
+    */
     private final Map<String, InfoPeer> peers = new LinkedHashMap<>();
 
     private int peerCont = 0;
 
     private int lettori = 0;
     private boolean scrittura = false;
- // metodo costruttore che inizializza il contatore dei peer a 0, quindi la tabella e' vuota all'inizio.
+    /* metodo costruttore che inizializza il contatore dei peer a 0, quindi la tabella e' vuota all'inizio. */
     public TabellaRilevazioni() {
         this.peerCont = 0;
     }
 
-    /*Implementazione del lock lettori-scrittori */
+    /* Implementazione del lock lettori-scrittori */
 
-    // Fa entrare un lettore: puo' procedere solo se non c'e' uno scrittore in corso,
-    //  altrimenti resta in attesa. Una volta ottenuto il turno, puo' leggere e anche se altri lettori possono entrare,
-    // finche' non chiama endRead().
+    /*
+    Fa entrare un lettore: puo' procedere solo se non c'e' uno scrittore in corso,
+    altrimenti resta in attesa. Una volta ottenuto il turno, puo' leggere e anche se altri lettori possono entrare,
+    finche' non chiama endRead().
+    */
     private synchronized void startRead() {
         while (scrittura) {
             try {
@@ -48,9 +52,11 @@ public class TabellaRilevazioni {
         lettori++;
     }
 
-    // metodo che segna la fine della lettura da parte di un thread: decrementa il contatore dei lettori e,
-    //  se non ce ne sono piu', sveglia tutti i thread in attesa ( che  saranno solo scirttori perchè i lettori fino a quel momento potevano
-    //  entrare senza problemi).
+    /*
+    metodo che segna la fine della lettura da parte di un thread: decrementa il contatore dei lettori e,
+    se non ce ne sono piu', sveglia tutti i thread in attesa ( che  saranno solo scirttori perchè i lettori fino a quel momento potevano
+    entrare senza problemi).
+    */
     private synchronized void endRead() {
         lettori--;
         if (lettori == 0) {
@@ -58,9 +64,11 @@ public class TabellaRilevazioni {
         }
     }
 
-    // metodo che fa entrare uno scrittore: puo' procedere solo se non c'e' nessun lettore in corso e nessun altro scrittore,
-    //  altrimenti resta in attesa. Una volta ottenuto il turno, puo' scrivere e nessun altro lettore o scrittore puo' entrare
-    // finche' non chiama endWrite().
+    /*
+    metodo che fa entrare uno scrittore: puo' procedere solo se non c'e' nessun lettore in corso e nessun altro scrittore,
+    altrimenti resta in attesa. Una volta ottenuto il turno, puo' scrivere e nessun altro lettore o scrittore puo' entrare
+    finche' non chiama endWrite().
+    */
     private synchronized void startWrite() {
         while (scrittura || lettori > 0) {
             try {
@@ -72,18 +80,22 @@ public class TabellaRilevazioni {
         scrittura = true;
     }
 
-    // Segnala che la scrittura e' terminata e sveglia tutti i thread in attesa, sia i lettori sia
-    // gli eventuali altri scrittori in coda.
+    /*
+    Segnala che la scrittura e' terminata e sveglia tutti i thread in attesa, sia i lettori sia
+    gli eventuali altri scrittori in coda.
+    */
     private synchronized void endWrite() {
         scrittura = false;
         notifyAll();
     }
 
-    // Registra un nuovo nodo sensore: gli assegna un identificativo progressivo (peer0, peer1,
-    // ...), crea il suo InfoPeer con le rilevazioni iniziali dichiarate e lo inserisce in tabella.
-    // Restituisce l'id appena assegnato, che il chiamante usera' per riconoscere il nodo da qui in
-    // avanti.
-    // dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
+    /*
+    Registra un nuovo nodo sensore: gli assegna un identificativo progressivo (peer0, peer1,
+    ...), crea il suo InfoPeer con le rilevazioni iniziali dichiarate e lo inserisce in tabella.
+    Restituisce l'id appena assegnato, che il chiamante usera' per riconoscere il nodo da qui in
+    avanti.
+    dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
+    */
     public String registraNodo(String host, int port, List<String> rilevazioni) {
         startWrite();
         try {
@@ -101,11 +113,13 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Aggiunge una rilevazione a un nodo gia' registrato: viene chiamato sia quando un nodo
-    // annuncia una nuova risorsa propria, sia quando un download va a buon fine e il richiedente
-    // diventa a sua volta possessore della rilevazione scaricata. Se il nodo non esiste (caso
-    // anomalo) non fa nulla.
-    //dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
+    /*
+    Aggiunge una rilevazione a un nodo gia' registrato: viene chiamato sia quando un nodo
+    annuncia una nuova risorsa propria, sia quando un download va a buon fine e il richiedente
+    diventa a sua volta possessore della rilevazione scaricata. Se il nodo non esiste (caso
+    anomalo) non fa nulla.
+    dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
+    */
     public void addRilevazione(String peerId, String rilevazione) {
         startWrite();
         try {
@@ -118,11 +132,13 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Toglie una rilevazione da un nodo: viene usato quando un download fallisce perche' il nodo
-    // scelto non possedeva piu' davvero quella rilevazione, cosi' che non venga riproposto in
-    // futuro per la stessa risorsa, e quando un nodo chiede di scaricare una rilevazione che quindi
-    // non possiede in locale.
-    // dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
+    /*
+    Toglie una rilevazione da un nodo: viene usato quando un download fallisce perche' il nodo
+    scelto non possedeva piu' davvero quella rilevazione, cosi' che non venga riproposto in
+    futuro per la stessa risorsa, e quando un nodo chiede di scaricare una rilevazione che quindi
+    non possiede in locale.
+    dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
+    */
     public void removeEntryRilevazione(String peerId, String rilevazione) {
         startWrite();
         try {
@@ -135,10 +151,12 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Marca un nodo come offline, tipicamente quando si disconnette (in modo voluto o per
-    // caduta della connessione). Il nodo resta comunque nella tabella con le sue rilevazioni: non
-    // viene piu' proposto come fornitore per i download, ma non scompare dagli elenchi.
-    // dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
+    /*
+    Marca un nodo come offline, tipicamente quando si disconnette (in modo voluto o per
+    caduta della connessione). Il nodo resta comunque nella tabella con le sue rilevazioni: non
+    viene piu' proposto come fornitore per i download, ma non scompare dagli elenchi.
+    dato che scrive in tabella utilizza i metodi startWrite() e endWrite() per garantire l'accesso esclusivo alla tabella durante la scrittura.
+    */
     public void markOffline(String peerId) {
         startWrite();
         try {
@@ -151,11 +169,13 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Costruisce una mappa dove ogni rilevazione e' collegata alla lista dei nodi che la possiedono, usata dai comandi
-    // listdata/LIST. Le rilevazioni sono ordinate per nome (TreeMap). Non filtra i nodi offline: anche dopo un quit,
-    // le rilevazioni di quel nodo restano visibili in questo elenco (anche se poi non sono davvero scaricabili).
-    // dato che legge la tabella utilizza i metodi startRead() e endRead(): altri lettori possono leggere insieme,
-    // ma nessuno scrittore puo' modificare la tabella finche' la lettura non e' finita.
+    /*
+    Costruisce una mappa dove ogni rilevazione e' collegata alla lista dei nodi che la possiedono, usata dai comandi
+    listdata/LIST. Le rilevazioni sono ordinate per nome (TreeMap). Non filtra i nodi offline: anche dopo un quit,
+    le rilevazioni di quel nodo restano visibili in questo elenco (anche se poi non sono davvero scaricabili).
+    dato che legge la tabella utilizza i metodi startRead() e endRead(): altri lettori possono leggere insieme,
+    ma nessuno scrittore puo' modificare la tabella finche' la lettura non e' finita.
+    */
     public Map<String, List<String>> listaRilevazioni() {
         startRead();
         try {
@@ -174,10 +194,12 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Restituisce i nodi attualmente online, cioe' quelli che si possono ancora considerare
-    // raggiungibili, escluso il nodo indicato (il nodo che ha fatto la richiesta, che vuole
-    // conoscere gli altri nodi attivi). Usato dal comando NODES.
-    // dato che legge la tabella utilizza i metodi startRead() e endRead().
+    /*
+    Restituisce i nodi attualmente online, cioe' quelli che si possono ancora considerare
+    raggiungibili, escluso il nodo indicato (il nodo che ha fatto la richiesta, che vuole
+    conoscere gli altri nodi attivi). Usato dal comando NODES.
+    dato che legge la tabella utilizza i metodi startRead() e endRead().
+    */
     public List<InfoPeer> activeNodes(String escluso) {
         startRead();
         try {
@@ -193,9 +215,11 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Restituisce tutti i nodi che secondo la tabella possiedono la rilevazione indicata, sia online
-    // sia offline (il chiamante puo' distinguerli con isOnline()). Usato dal comando WHOHAS.
-    // dato che legge la tabella utilizza i metodi startRead() e endRead().
+    /*
+    Restituisce tutti i nodi che secondo la tabella possiedono la rilevazione indicata, sia online
+    sia offline (il chiamante puo' distinguerli con isOnline()). Usato dal comando WHOHAS.
+    dato che legge la tabella utilizza i metodi startRead() e endRead().
+    */
     public List<InfoPeer> nodiConRilevazione(String rilevazione) {
         startRead();
         try {
@@ -211,11 +235,13 @@ public class TabellaRilevazioni {
         }
     }
 
-    // Cerca un nodo online che possieda la rilevazione richiesta e che non sia gia' tra quelli
-    // esclusi (cioe' gia' provati senza successo, oppure il richiedente stesso). Restituisce il primo
-    // che trova, oppure null se nessun nodo puo' fornire quella rilevazione: e' cosi' che l'aggregatore
-    // decide a chi proporre un download e come gestisce i tentativi falliti (RETRY).
-    // dato che legge la tabella utilizza i metodi startRead() e endRead().
+    /*
+    Cerca un nodo online che possieda la rilevazione richiesta e che non sia gia' tra quelli
+    esclusi (cioe' gia' provati senza successo, oppure il richiedente stesso). Restituisce il primo
+    che trova, oppure null se nessun nodo puo' fornire quella rilevazione: e' cosi' che l'aggregatore
+    decide a chi proporre un download e come gestisce i tentativi falliti (RETRY).
+    dato che legge la tabella utilizza i metodi startRead() e endRead().
+    */
     public InfoPeer selectProvider(String rilevazione, Set<String> excluded) {
         startRead();
         try {

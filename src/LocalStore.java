@@ -10,23 +10,23 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Gestisce la persistenza locale e la cache in memoria delle rilevazioni del nodo.
- * Ogni rilevazione e' un file di testo nella cartella storage/<nome_nodo>, il cui nome
- * e' il nome (univoco nel nodo) della rilevazione. Tutti i metodi pubblici sono
- * synchronized, perche' l'archivio viene usato contemporaneamente dalla console
- * (comandi add e download) e dai thread che servono le richieste degli altri nodi.
- */
+/*
+Gestisce la persistenza locale e la cache in memoria delle rilevazioni del nodo.
+Ogni rilevazione e' un file di testo nella cartella storage/<nome_nodo>, il cui nome
+e' il nome (univoco nel nodo) della rilevazione. Tutti i metodi pubblici sono
+synchronized, perche' l'archivio viene usato contemporaneamente dalla console
+(comandi add e download) e dai thread che servono le richieste degli altri nodi.
+*/
 public class LocalStore {
 
     private final File dir;
     private final Map<String, String> data = new HashMap<>();
 
-    /**
-     * Inizializza la directory di storage per il nodo specifico e carica in memoria
-     * le rilevazioni preesistenti lette da disco. I file con un nome non utilizzabile come
-     * nome di rilevazione (vedi nomeValido) e i file nascosti vengono ignorati, segnalandolo.
-     */
+    /*
+    Inizializza la directory di storage per il nodo specifico e carica in memoria
+    le rilevazioni preesistenti lette da disco. I file con un nome non utilizzabile come
+    nome di rilevazione (vedi nomeValido) e i file nascosti vengono ignorati, segnalandolo.
+    */
     public LocalStore(String nodeName) throws IOException {
 
         if (nodeName == null || nodeName.trim().isEmpty()) {
@@ -53,14 +53,9 @@ public class LocalStore {
         }
     }
 
-    /**
-     * Controlla che un nome possa essere usato come nome di rilevazione. Il nome non puo':
-     * - essere vuoto o contenere spazi, perche' nel protocollo gli argomenti sono separati da spazi;
-     * - contenere virgole, perche' nel messaggio REGISTER le rilevazioni sono separate da virgole;
-     * - essere "-", che nel messaggio REGISTER indica "nessuna rilevazione";
-     * - contenere "/" o "\" o essere "." o "..", per evitare di scrivere file fuori dalla cartella
-     *   del nodo (path traversal).
-     */
+    /*
+    Controlla che un nome possa essere usato come nome di rilevazione.
+    */
     public static boolean nomeValido(String rilevazione) {
         if (rilevazione == null || rilevazione.isEmpty()) return false;
         if (rilevazione.equals("-") || rilevazione.equals(".") || rilevazione.equals("..")) return false;
@@ -70,9 +65,9 @@ public class LocalStore {
         return true;
     }
 
-    /**
-     * Legge il contenuto testuale (UTF-8) di un file da disco ricostruendolo riga per riga.
-     */
+    /*
+    Legge il contenuto testuale (UTF-8) di un file da disco ricostruendolo riga per riga.
+    */
     private String readFile(File file) throws IOException {
         StringBuilder sb = new StringBuilder();
         try (BufferedReader lettore = new BufferedReader(new FileReader(file, StandardCharsets.UTF_8))) {
@@ -89,40 +84,40 @@ public class LocalStore {
         return sb.toString();
     }
 
-    /**
-     * Restituisce una copia, ordinata per nome, dell'elenco dei nomi delle rilevazioni memorizzate.
-     */
+    /*
+    Restituisce una copia, ordinata per nome, dell'elenco dei nomi delle rilevazioni memorizzate.
+    */
     public synchronized List<String> listNames() {
         List<String> nomi = new ArrayList<>(data.keySet());
         Collections.sort(nomi);
         return nomi;
     }
 
-    /**
-     * Verifica la presenza di una specifica rilevazione nell'archivio locale.
-     */
+    /*
+    Verifica la presenza di una specifica rilevazione nell'archivio locale.
+    */
     public synchronized boolean has(String rilevazione) {
         if (rilevazione == null) return false;
         return data.containsKey(rilevazione);
     }
 
-    /**
-     * Recupera il contenuto della rilevazione indicata, o null se non presente.
-     */
+    /*
+    Recupera il contenuto della rilevazione indicata, o null se non presente.
+    */
     public synchronized String get(String rilevazione) {
         if (rilevazione == null) return null;
         return data.get(rilevazione);
     }
 
-    /**
-     * Aggiunge una nuova rilevazione al nodo. Il nome viene prima validato (vedi nomeValido),
-     * altrimenti viene lanciata una IllegalArgumentException. Dato che il nome di una rilevazione
-     * e' univoco all'interno del nodo, se esiste gia' una rilevazione con lo stesso nome non viene
-     * sovrascritta e il metodo restituisce false. Altrimenti il contenuto viene scritto prima su
-     * file e solo dopo inserito nella mappa in memoria: se la scrittura fallisce la mappa non viene
-     * toccata, cosi' memoria e disco restano allineati. Essendo synchronized, il controllo e
-     * l'inserimento avvengono in modo atomico rispetto agli altri thread.
-     */
+    /*
+    Aggiunge una nuova rilevazione al nodo. Il nome viene prima validato (vedi nomeValido),
+    altrimenti viene lanciata una IllegalArgumentException. Dato che il nome di una rilevazione
+    e' univoco all'interno del nodo, se esiste gia' una rilevazione con lo stesso nome non viene
+    sovrascritta e il metodo restituisce false. Altrimenti il contenuto viene scritto prima su
+    file e solo dopo inserito nella mappa in memoria: se la scrittura fallisce la mappa non viene
+    toccata, cosi' memoria e disco restano allineati. Essendo synchronized, il controllo e
+    l'inserimento avvengono in modo atomico rispetto agli altri thread.
+    */
     public synchronized boolean add(String rilevazione, String contenuto) throws IOException {
         if (!nomeValido(rilevazione)) {
             throw new IllegalArgumentException("nome della rilevazione non valido: '" + rilevazione

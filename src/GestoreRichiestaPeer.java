@@ -8,33 +8,35 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /*
- * Questa classe serve UNA singola richiesta di download proveniente da un altro
- * nodo sensore: legge il comando GET <rilevazione>, controlla se il nodo
- * possiede davvero quella rilevazione e risponde di conseguenza (il contenuto
- * codificato in Base64 se ce l'ha, oppure NOTFOUND se non ce l'ha piu'). Prima
- * di accedere all'archivio acquisisce la FifoQueue condivisa con tutti gli altri
- * PeerRequestHandler dello stesso nodo, cosi' le richieste vengono servite una
- * alla volta e nell'ordine in cui sono arrivate, mentre le altre restano in coda
- * in attesa del loro turno (senza terminare con un errore).
- */
-public class PeerRequestHandler implements Runnable {
+Questa classe serve UNA singola richiesta di download proveniente da un altro
+nodo sensore, legge il comando GET <rilevazione>, controlla se il nodo
+possiede davvero quella rilevazione e risponde di conseguenza (il contenuto
+codificato in Base64 se ce l'ha, oppure NOTFOUND se non ce l'ha piu'). Prima
+di accedere all'archivio acquisisce la FifoQueue condivisa con tutti gli altri
+GestoreRichiestaPeer dello stesso nodo, cosi' le richieste vengono servite una
+alla volta e nell'ordine in cui sono arrivate, mentre le altre restano in coda
+in attesa del loro turno (senza terminare con un errore).
+*/
+public class GestoreRichiestaPeer implements Runnable {
 
     private final Socket socket;
     private final LocalStore store;
     private final FifoQueue serveLock;
 
-    public PeerRequestHandler(Socket socket, LocalStore store, FifoQueue serveLock) {
+    public GestoreRichiestaPeer(Socket socket, LocalStore store, FifoQueue serveLock) {
         this.socket = socket;
         this.store = store;
         this.serveLock = serveLock;
     }
 
-    // Legge la richiesta in arrivo sul socket: se e' un GET, si mette in coda sulla FifoQueue,
-    // controlla se il nodo possiede la rilevazione richiesta e risponde con il contenuto codificato
-    // in Base64 oppure con NOTFOUND, rilasciando sempre il lock alla fine (anche in caso di
-    // errore, grazie al finally). Se il comando ricevuto non e' un GET valido risponde con un errore.
-    // Qualunque problema di connessione viene semplicemente ignorato: il nodo richiedente, dal suo
-    // punto di vista, vedra' la richiesta fallita e riprovera' con un altro nodo.
+    /*
+    Legge la richiesta in arrivo sul socket: se e' un GET, si mette in coda sulla FifoQueue,
+    controlla se il nodo possiede la rilevazione richiesta e risponde con il contenuto codificato
+    in Base64 oppure con NOTFOUND, rilasciando sempre il lock alla fine (anche in caso di
+    errore, grazie al finally). Se il comando ricevuto non e' un GET valido risponde con un errore.
+    Qualunque problema di connessione viene semplicemente ignorato: il nodo richiedente, dal suo
+    punto di vista, vedra' la richiesta fallita e riprovera' con un altro nodo.
+    */
     @Override
     public void run() {
         try (socket;
@@ -66,7 +68,7 @@ public class PeerRequestHandler implements Runnable {
                 scrittore.println(Protocol.ERR + " comando peer sconosciuto");
             }
         } catch (IOException e) {
-            // Connessione caduta in modo anomalo: non c'e' nulla da fare, il richiedente riprovera'.
+            /* Connessione caduta in modo anomalo: non c'e' nulla da fare, il richiedente riprovera'. */
         }
     }
 }

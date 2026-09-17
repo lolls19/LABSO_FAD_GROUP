@@ -1,29 +1,29 @@
 /*
- * Questa classe raccoglie tutte le parole chiave del protocollo testuale usato per
- * far comunicare tra loro Client e Aggregatore, e i Client tra di loro (scambio
- * peer-to-peer).
- *
- * Ogni messaggio scambiato e' una riga di testo in UTF-8 che finisce
- * con un a-capo; le varie parti del messaggio (comando e argomenti) sono separate
- * da spazi. Il contenuto delle rilevazioni viene sempre mandato codificato in
- * Base64.
- *
- * Messaggi che il nodo invia all'aggregatore:
- *  - REGISTER <host> <porta> <r1,r2,...>  registra il nodo con le rilevazioni possedute ("-" se nessuna)
- *  - ADD <rilevazione>                    notifica una nuova rilevazione del nodo
- *  - LIST                                 chiede tutte le rilevazioni della rete con i nodi che le possiedono
- *  - NODES                                chiede l'elenco degli altri nodi sensore attivi
- *  - WHOHAS <rilevazione>                 chiede quali nodi possiedono una determinata rilevazione
- *  - DOWNLOAD <rilevazione>               chiede il token di accesso e il nodo da cui scaricare
- *  - RETRY <token> <peerId>               il nodo proposto non ha fornito la rilevazione, ne chiede un altro
- *  - DONE <token> <peerId> <rilevazione>  download riuscito, rilascia il token di accesso
- *  - DISCONNECT                           il nodo lascia la rete
- *
- * Risposte dell'aggregatore: OK, PEER <token> <peerId> <host> <porta>, UNAVAILABLE, ERR <motivo>;
- * gli elenchi (LIST, NODES, WHOHAS) sono una riga per elemento chiusa da END.
- *
- * Messaggi tra nodi: GET <rilevazione>, a cui il nodo risponde OK <contenuto Base64> oppure NOTFOUND.
- */
+Questa classe raccoglie tutte le parole chiave del protocollo testuale usato per
+far comunicare tra loro Client e Aggregatore, e i Client tra di loro (scambio
+peer-to-peer).
+
+Ogni messaggio scambiato e' una riga di testo in UTF-8 che finisce
+con un a-capo; le varie parti del messaggio (comando e argomenti) sono separate
+da spazi. Il contenuto delle rilevazioni viene sempre mandato codificato in
+Base64.
+
+Messaggi che il nodo invia all'aggregatore:
+ - REGISTER <host> <porta> <r1,r2,...>  registra il nodo con le rilevazioni possedute ("-" se nessuna)
+ - ADD <rilevazione>                    notifica una nuova rilevazione del nodo
+ - LIST                                 chiede tutte le rilevazioni della rete con i nodi che le possiedono
+ - NODES                                chiede l'elenco degli altri nodi sensore attivi
+ - WHOHAS <rilevazione>                 chiede quali nodi possiedono una determinata rilevazione
+ - DOWNLOAD <rilevazione>               chiede il token di accesso e il nodo da cui scaricare
+ - RETRY <token> <peerId>               il nodo proposto non ha fornito la rilevazione, ne chiede un altro
+ - DONE <token> <peerId> <rilevazione>  download riuscito, rilascia il token di accesso
+ - DISCONNECT                           il nodo lascia la rete
+
+Risposte dell'aggregatore: OK, PEER <token> <peerId> <host> <porta>, UNAVAILABLE, ERR <motivo>;
+gli elenchi (LIST, NODES, WHOHAS) sono una riga per elemento chiusa da END.
+
+Messaggi tra nodi: GET <rilevazione>, a cui il nodo risponde OK <contenuto Base64> oppure NOTFOUND.
+*/
 public final class Protocol {
 
     private Protocol() { }

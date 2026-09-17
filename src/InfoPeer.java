@@ -2,22 +2,22 @@ import java.util.HashSet;
 import java.util.Set;
 
 /*
- * Questa classe rappresenta un nodo sensore cosi' come lo conosce l'aggregatore:
- * il suo identificativo, l'indirizzo e la porta a cui contattarlo, quali
- * rilevazioni possiede e se al momento e' online oppure no. Quindi contiene le 
- * informazioni che l'aggregatore deve mantenere per ogni nodo registrato, e fornisce
- * metodi per leggerle e aggiornarle.
- *
- * Gli InfoPeer vengono modificati solo attraverso TabellaRilevazioni, che con il suo
- * lock lettori-scrittori impedisce gia' che una modifica avvenga insieme ad altre
- * letture o scritture della tabella. La classe pero' e' resa thread-safe anche da sola,
- * perche' alcuni dati vengono letti anche fuori dal lock della tabella (per esempio
- * GestoreNodo legge isOnline() dei nodi restituiti da WHOHAS): il campo "online" e'
- * volatile (basta per un singolo valore letto/scritto da piu' thread) mentre l'insieme
- * delle rilevazioni, che invece subisce piu' operazioni (aggiungi, rimuovi, controlla),
- * e' protetto con synchronized, cosi' un solo thread alla volta puo' accedere all'insieme.
- * I campi peerId, host e port sono final e quindi possono essere letti senza protezione.
- */
+Questa classe rappresenta un nodo sensore cosi' come lo conosce l'aggregatore:
+il suo identificativo, l'indirizzo e la porta a cui contattarlo, quali
+rilevazioni possiede e se al momento e' online oppure no. Quindi contiene le
+informazioni che l'aggregatore deve mantenere per ogni nodo registrato, e fornisce
+metodi per leggerle e aggiornarle.
+
+Gli InfoPeer vengono modificati solo attraverso TabellaRilevazioni, che con il suo
+lock lettori-scrittori impedisce gia' che una modifica avvenga insieme ad altre
+letture o scritture della tabella. La classe pero' e' resa thread-safe anche da sola,
+perche' alcuni dati vengono letti anche fuori dal lock della tabella (per esempio
+GestoreNodo legge isOnline() dei nodi restituiti da WHOHAS): il campo "online" e'
+volatile (basta per un singolo valore letto/scritto da piu' thread) mentre l'insieme
+delle rilevazioni, che invece subisce piu' operazioni (aggiungi, rimuovi, controlla),
+e' protetto con synchronized, cosi' un solo thread alla volta puo' accedere all'insieme.
+I campi peerId, host e port sono final e quindi possono essere letti senza protezione.
+*/
 public class InfoPeer {
 
     private final String peerId;
@@ -28,33 +28,39 @@ public class InfoPeer {
 
     private volatile boolean online = true;
 
-    // Metodo costruttore che inizializza l'oggetto con i dati identificativi del nodo: id, host e porta.
+    /* Metodo costruttore che inizializza l'oggetto con i dati identificativi del nodo: id, host e porta. */
     public InfoPeer(String peerId, String host, int port) {
         this.peerId = peerId;
         this.host = host;
         this.port = port;
     }
 
-    // i metodi getter restituiscono i dati identificativi del nodo: id, host e porta.
+    /* i metodi getter restituiscono i dati identificativi del nodo: id, host e porta. */
     public String getPeerId() { return peerId; }
     public String getHost()   { return host; }
     public int    getPort()   { return port; }
 
-    // Metodi per leggere e modificare lo stato online/offline del nodo: non servono synchronized perche' il
-    // campo e' volatile, quindi ogni thread vede sempre l'ultimo valore scritto da un altro thread.
+    /*
+    Metodi per leggere e modificare lo stato online/offline del nodo: non servono synchronized perche' il
+    campo e' volatile, quindi ogni thread vede sempre l'ultimo valore scritto da un altro thread.
+    */
     public boolean isOnline() { return online; }
     public void setOnline(boolean online) { this.online = online; }
 
-    // Metodi per leggere e modificare l'insieme delle rilevazioni possedute dal nodo: sono sincronizzati
-    // perche' piu' thread diversi possono leggere e modificare lo stato di uno stesso nodo contemporaneamente.
+    /*
+    Metodi per leggere e modificare l'insieme delle rilevazioni possedute dal nodo: sono sincronizzati
+    perche' piu' thread diversi possono leggere e modificare lo stato di uno stesso nodo contemporaneamente.
+    */
     public synchronized void addRilevazione(String r)    { rilevazioni.add(r); }
     public synchronized void removeRilevazione(String r) { rilevazioni.remove(r); }
     public synchronized boolean hasRilevazione(String r)  { return rilevazioni.contains(r); }
 
-    // metodo per ottenere una copia dell'insieme delle rilevazioni possedute dal nodo.
-    // E' sincronizzato perche' piu' thread diversi possono leggere e modificare lo stato
-    //  di uno stesso nodo contemporaneamente. Lo restituisce come un nuovo HashSet, cosi' 
-    // chi lo riceve non va a modificare l'HashSet originale, ma lavora su una copia.
+    /*
+    metodo per ottenere una copia dell'insieme delle rilevazioni possedute dal nodo.
+    E' sincronizzato perche' piu' thread diversi possono leggere e modificare lo stato
+    di uno stesso nodo contemporaneamente. Lo restituisce come un nuovo HashSet, cosi'
+    chi lo riceve non va a modificare l'HashSet originale, ma lavora su una copia.
+    */
     public synchronized Set<String> getSnapshotRilevazione() {
         return new HashSet<>(rilevazioni);
     }
